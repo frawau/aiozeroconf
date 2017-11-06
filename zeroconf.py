@@ -1,27 +1,44 @@
-from __future__ import (
-    absolute_import, division, print_function, unicode_literals)
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This module provides a framework for the use of DNS Service Discovery
+# using IP multicast.
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# Portion of this code is covered by the following license
+#
+# Copyright 2003 Paul Scott-Murphy, 2014 William McBrine
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public License for more details.
 
-""" Multicast DNS Service Discovery for Python, v0.14-wmcbrine
-    Copyright 2003 Paul Scott-Murphy, 2014 William McBrine
-
-    This module provides a framework for the use of DNS Service Discovery
-    using IP multicast.
-
-    This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Lesser General Public
-    License as published by the Free Software Foundation; either
-    version 2.1 of the License, or (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-    Lesser General Public License for more details.
-
-    You should have received a copy of the GNU Lesser General Public
-    License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-    USA
-"""
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
+# USA
 
 import enum
 import errno
@@ -31,18 +48,16 @@ import select
 import socket
 import struct
 import sys
-import threading
+import asyncio
 import time
-from functools import reduce
+from functools import reduce, partial
 
 import netifaces
-from six import binary_type, indexbytes, int2byte, iteritems, text_type
-from six.moves import xrange
 
-__author__ = 'Paul Scott-Murphy, William McBrine'
-__maintainer__ = 'Jakub Stasiak <jakub@stasiak.at>'
-__version__ = '0.19.1'
-__license__ = 'LGPL'
+__author__ = 'François Wautier'
+__maintainer__ = 'François Wautier <francois@wautier.eu>'
+__version__ = '0.1.0'
+__license__ = 'MIT'
 
 
 __all__ = [
@@ -57,7 +72,6 @@ log.addHandler(logging.NullHandler())
 
 if log.level == logging.NOTSET:
     log.setLevel(logging.WARN)
-
 # Some timing constants
 
 _UNREGISTER_TIME = 125
@@ -69,6 +83,7 @@ _BROWSER_TIME = 500
 # Some DNS constants
 
 _MDNS_ADDR = '224.0.0.251'
+_MDNS6_ADDR = 'FF02::FB'
 _MDNS_PORT = 5353
 _DNS_PORT = 53
 _DNS_TTL = 60 * 60  # one hour default TTL
@@ -373,7 +388,7 @@ class DNSEntry(object):
     def to_string(self, hdr, other):
         """String representation with additional information"""
         result = "%s[%s,%s" % (hdr, self.get_type(self.type),
-                               self.get_class_(self.class_))
+                               str(self.get_class_(self.class_)))
         if self.unique:
             result += "-unique,"
         else:
@@ -568,8 +583,7 @@ class DNSService(DNSRecord):
 
     """A DNS service record"""
 
-    def __init__(self, name, type_, class_, ttl,
-                 priority, weight, port, server):
+    def __init__(self, name, type_, class_, ttl, priority, weight, port, server):
         DNSRecord.__init__(self, name, type_, class_, ttl)
         self.priority = priority
         self.weight = weight
@@ -638,7 +652,7 @@ class DNSIncoming(QuietLogger):
 
     def read_questions(self):
         """Reads questions section of packet"""
-        for i in xrange(self.num_questions):
+        for i in range(self.num_questions):
             name = self.read_name()
             type_, class_ = self.unpack(b'!HH')
 
@@ -651,7 +665,7 @@ class DNSIncoming(QuietLogger):
 
     def read_character_string(self):
         """Reads a character string from the packet"""
-        length = indexbytes(self.data, self.offset)
+        length = self.data[self.offset]
         self.offset += 1
         return self.read_string(length)
 
@@ -669,7 +683,7 @@ class DNSIncoming(QuietLogger):
         """Reads the answers, authorities and additionals section of the
         packet"""
         n = self.num_answers + self.num_authorities + self.num_additionals
-        for i in xrange(n):
+        for i in range(n):
             domain = self.read_name()
             type_, class_, ttl, length = self.unpack(b'!HHiH')
 
@@ -714,7 +728,7 @@ class DNSIncoming(QuietLogger):
 
     def read_utf(self, offset, length):
         """Reads a UTF-8 string of a given length from the packet"""
-        return text_type(self.data[offset:offset + length], 'utf-8', 'replace')
+        return str(self.data[offset:offset + length], 'utf-8', 'replace')
 
     def read_name(self):
         """Reads a domain name from the packet"""
@@ -724,7 +738,7 @@ class DNSIncoming(QuietLogger):
         first = off
 
         while True:
-            length = indexbytes(self.data, off)
+            length = self.data[off]
             off += 1
             if length == 0:
                 break
@@ -735,7 +749,7 @@ class DNSIncoming(QuietLogger):
             elif t == 0xC0:
                 if next_ < 0:
                     next_ = off + 1
-                off = ((length & 0x3F) << 8) | indexbytes(self.data, off)
+                off = ((length & 0x3F) << 8) | self.data[off]
                 if off >= first:
                     raise IncomingDecodeError(
                         "Bad domain name (circular) at %s" % (off,))
@@ -799,7 +813,7 @@ class DNSOutgoing(object):
             if now == 0 or not record.is_expired(now):
                 self.answers.append((record, now))
 
-    def add_authorative_answer(self, record):
+    def add_authoritative_answer(self, record):
         """Adds an authoritative answer"""
         self.authorities.append(record)
 
@@ -847,7 +861,7 @@ class DNSOutgoing(object):
 
     def write_byte(self, value):
         """Writes a single byte to the packet"""
-        self.pack(b'!c', int2byte(value))
+        self.pack(b'!c', bytes((value,)))
 
     def insert_short(self, index, value):
         """Inserts an unsigned short in a certain position in the packet"""
@@ -1066,79 +1080,28 @@ class DNSCache(object):
             return reduce(lambda a, b: a + b, values)
 
 
-class Engine(threading.Thread):
 
-    """An engine wraps read access to sockets, allowing objects that
-    need to receive data from sockets to be called back when the
-    sockets are ready.
+class MCListener(asyncio.Protocol,QuietLogger):
 
-    A reader needs a handle_read() method, which is called when the socket
-    it is interested in is ready for reading.
-
-    Writers are not implemented here, because we only send short
-    packets.
-    """
-
-    def __init__(self, zc):
-        threading.Thread.__init__(self, name='zeroconf-Engine')
-        self.daemon = True
-        self.zc = zc
-        self.readers = {}  # maps socket to reader
-        self.timeout = 5
-        self.condition = threading.Condition()
-        self.start()
-
-    def run(self):
-        while not self.zc.done:
-            with self.condition:
-                rs = self.readers.keys()
-                if len(rs) == 0:
-                    # No sockets to manage, but we wait for the timeout
-                    # or addition of a socket
-                    self.condition.wait(self.timeout)
-
-            if len(rs) != 0:
-                try:
-                    rr, wr, er = select.select(rs, [], [], self.timeout)
-                    if not self.zc.done:
-                        for socket_ in rr:
-                            reader = self.readers.get(socket_)
-                            if reader:
-                                reader.handle_read(socket_)
-
-                except (select.error, socket.error) as e:
-                    # If the socket was closed by another thread, during
-                    # shutdown, ignore it and exit
-                    if e.args[0] != socket.EBADF or not self.zc.done:
-                        raise
-
-    def add_reader(self, reader, socket_):
-        with self.condition:
-            self.readers[socket_] = reader
-            self.condition.notify()
-
-    def del_reader(self, socket_):
-        with self.condition:
-            del self.readers[socket_]
-            self.condition.notify()
-
-
-class Listener(QuietLogger):
-
-    """A Listener is used by this module to listen on the multicast
+    """A MCListener is used by this module to listen on the multicast
     group to which DNS messages are sent, allowing the implementation
-    to cache information as it arrives.
-
-    It requires registration with an Engine object in order to have
-    the read() method called when a socket is available for reading."""
+    to cache information as it arrives."""
 
     def __init__(self, zc):
+        asyncio.Protocol.__init__(self)
         self.zc = zc
         self.data = None
 
-    def handle_read(self, socket_):
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def datagram_received(self, data, addrs):
         try:
-            data, (addr, port) = socket_.recvfrom(_MAX_MSG_ABSOLUTE)
+            assert len(addrs) in [2,4], "What network protocol is that?"
+            if len(addrs) == 2:
+                addr, port = addrs
+            else:
+                addr, port, flow, scope =  addrs
         except Exception:
             self.log_exception_warning()
             return
@@ -1164,23 +1127,22 @@ class Listener(QuietLogger):
         else:
             self.zc.handle_response(msg)
 
+    def connection_lost(self, exc):
+        super().connection_lost(exc)
 
-class Reaper(threading.Thread):
+
+class Reaper():
 
     """A Reaper is used by this module to remove cache entries that
     have expired."""
 
     def __init__(self, zc):
-        threading.Thread.__init__(self, name='zeroconf-Reaper')
-        self.daemon = True
         self.zc = zc
-        self.start()
+        self.task = asyncio.ensure_future(self.run())
 
-    def run(self):
+    async def run(self):
         while True:
-            self.zc.wait(10 * 1000)
-            if self.zc.done:
-                return
+            await asyncio.sleep(10)
             now = current_time_millis()
             for record in self.zc.cache.entries():
                 if record.is_expired(now):
@@ -1188,34 +1150,7 @@ class Reaper(threading.Thread):
                     self.zc.cache.remove(record)
 
 
-class Signal(object):
-    def __init__(self):
-        self._handlers = []
-
-    def fire(self, **kwargs):
-        for h in list(self._handlers):
-            h(**kwargs)
-
-    @property
-    def registration_interface(self):
-        return SignalRegistrationInterface(self._handlers)
-
-
-class SignalRegistrationInterface(object):
-
-    def __init__(self, handlers):
-        self._handlers = handlers
-
-    def register_handler(self, handler):
-        self._handlers.append(handler)
-        return self
-
-    def unregister_handler(self, handler):
-        self._handlers.remove(handler)
-        return self
-
-
-class ServiceBrowser(threading.Thread):
+class ServiceBrowser():
 
     """Used to browse for a service of a specific type.
 
@@ -1228,59 +1163,29 @@ class ServiceBrowser(threading.Thread):
         assert handlers or listener, 'You need to specify at least one handler'
         if not type_.endswith(service_type_name(type_)):
             raise BadTypeInNameException
-        threading.Thread.__init__(
-            self, name='zeroconf-ServiceBrowser_' + type_)
-        self.daemon = True
+
         self.zc = zc
         self.type = type_
         self.services = {}
-        self.next_time = current_time_millis()
+        self.next_time = 100
         self.delay = _BROWSER_TIME
-        self._handlers_to_call = []
-
-        self._service_state_changed = Signal()
-
         self.done = False
 
         if hasattr(handlers, 'add_service'):
             listener = handlers
             handlers = None
 
-        handlers = handlers or []
-
-        if listener:
-            def on_change(zeroconf, service_type, name, state_change):
-                args = (zeroconf, service_type, name)
-                if state_change is ServiceStateChange.Added:
-                    listener.add_service(*args)
-                elif state_change is ServiceStateChange.Removed:
-                    listener.remove_service(*args)
-                else:
-                    raise NotImplementedError(state_change)
-            handlers.append(on_change)
-
-        for h in handlers:
-            self.service_state_changed.register_handler(h)
-
-        self.start()
-
-    @property
-    def service_state_changed(self):
-        return self._service_state_changed.registration_interface
+        if handlers and not isinstance(handlers,list):
+            self.handlers = [handlers]
+        else:
+            self.handlers = handlers or []
+        self.listener = listener or None
+        self.task = asyncio.ensure_future(self.run())
 
     def update_record(self, zc, now, record):
         """Callback invoked by Zeroconf when new information arrives.
 
         Updates information required by browser in the Zeroconf cache."""
-
-        def enqueue_callback(state_change, name):
-            self._handlers_to_call.append(
-                lambda zeroconf: self._service_state_changed.fire(
-                    zeroconf=zeroconf,
-                    service_type=self.type,
-                    name=name,
-                    state_change=state_change,
-                ))
 
         if record.type == _TYPE_PTR and record.name == self.type:
             expired = record.is_expired(now)
@@ -1290,13 +1195,20 @@ class ServiceBrowser(threading.Thread):
             except KeyError:
                 if not expired:
                     self.services[service_key] = record
-                    enqueue_callback(ServiceStateChange.Added, record.alias)
+                    if self.listener:
+                        self.listener.add_service(self.zc,self.type, record.alias)
+                    for hdlr in self.handlers:
+                        hdlr(self.zc,self.type, record.alias,ServiceStateChange.Added)
+
             else:
                 if not expired:
                     old_record.reset_ttl(record)
                 else:
                     del self.services[service_key]
-                    enqueue_callback(ServiceStateChange.Removed, record.alias)
+                    if self.listener:
+                        self.listener.remove_service(self.zc,self.type, record.alias)
+                    for hdlr in self.handlers:
+                        hdlr(self.zc,self.type, record.alias,ServiceStateChange.Removed)
                     return
 
             expires = record.get_expiration_time(75)
@@ -1305,16 +1217,16 @@ class ServiceBrowser(threading.Thread):
 
     def cancel(self):
         self.done = True
+        self.task.cancel()
         self.zc.remove_listener(self)
-        self.join()
 
-    def run(self):
+    async def run(self):
         self.zc.add_listener(self, DNSQuestion(self.type, _TYPE_PTR, _CLASS_IN))
 
         while True:
             now = current_time_millis()
-            if len(self._handlers_to_call) == 0 and self.next_time > now:
-                self.zc.wait(self.next_time - now)
+            if self.next_time > now:
+                await asyncio.sleep(round((self.next_time - now)/1000.0,2))
             if self.zc.done or self.done:
                 return
             now = current_time_millis()
@@ -1324,14 +1236,9 @@ class ServiceBrowser(threading.Thread):
                 for record in self.services.values():
                     if not record.is_expired(now):
                         out.add_answer_at_time(record, now)
-
                 self.zc.send(out)
                 self.next_time = now + self.delay
                 self.delay = min(20 * 1000, self.delay * 2)
-
-            if len(self._handlers_to_call) > 0 and not self.zc.done:
-                handler = self._handlers_to_call.pop(0)
-                handler(self.zc)
 
 
 class ServiceInfo(object):
@@ -1377,15 +1284,15 @@ class ServiceInfo(object):
             self._properties = properties
             list_ = []
             result = b''
-            for key, value in iteritems(properties):
-                if isinstance(key, text_type):
+            for key, value in properties.items():
+                if isinstance(key, str):
                     key = key.encode('utf-8')
 
                 if value is None:
                     suffix = b''
-                elif isinstance(value, text_type):
+                elif isinstance(value, str):
                     suffix = value.encode('utf-8')
-                elif isinstance(value, binary_type):
+                elif isinstance(value, bytes):
                     suffix = value
                 elif isinstance(value, int):
                     if value:
@@ -1396,7 +1303,7 @@ class ServiceInfo(object):
                     suffix = b''
                 list_.append(b'='.join((key, suffix)))
             for item in list_:
-                result = b''.join((result, int2byte(len(item)), item))
+                result = b''.join((result, bytes((len(item),)), item))
             self.text = result
         else:
             self.text = properties
@@ -1409,7 +1316,7 @@ class ServiceInfo(object):
         index = 0
         strs = []
         while index < end:
-            length = indexbytes(text, index)
+            length = text[index]
             index += 1
             strs.append(text[index:index + length])
             index += length
@@ -1461,8 +1368,8 @@ class ServiceInfo(object):
                 if record.name == self.name:
                     self._set_text(record.text)
 
-    def request(self, zc, timeout):
-        """Returns true if the service could be discovered on the
+    async def request(self, zc, timeout):
+        """Coroutine: Returns true if the service could be discovered on the
         network, and updates this object with details discovered.
         """
         now = current_time_millis()
@@ -1512,12 +1419,12 @@ class ServiceInfo(object):
                     zc.send(out)
                     next_ = now + delay
                     delay *= 2
-
-                zc.wait(min(next_, last) - now)
+                await asyncio.sleep((min(next_, last) - now)/1000.0)
                 now = current_time_millis()
+        except:
+            pass
         finally:
             zc.remove_listener(self)
-
         return True
 
     def __eq__(self, other):
@@ -1556,51 +1463,31 @@ class ZeroconfServiceTypes(object):
         pass
 
     @classmethod
-    def find(cls, zc=None, timeout=5, interfaces=InterfaceChoice.All):
+    async def find(cls, zc, timeout=5):
         """
         Return all of the advertised services on any local networks.
 
-        :param zc: Zeroconf() instance.  Pass in if already have an
-                instance running or if non-default interfaces are needed
+        :param zc: Zeroconf() instance.  Pass in an instance running
         :param timeout: seconds to wait for any responses
         :return: tuple of service type strings
         """
-        local_zc = zc or Zeroconf(interfaces=interfaces)
         listener = cls()
         browser = ServiceBrowser(
-            local_zc, '_services._dns-sd._udp.local.', listener=listener)
+            zc, '_services._dns-sd._udp.local.', listener=listener)
 
         # wait for responses
-        time.sleep(timeout)
+        await asyncio.sleep(timeout)
 
-        # close down anything we opened
-        if zc is None:
-            local_zc.close()
-        else:
-            browser.cancel()
+        browser.cancel()
 
         return tuple(sorted(listener.found_services))
 
 
-def get_all_addresses(address_family):
-    return list(set(
-        addr['addr']
-        for iface in netifaces.interfaces()
-        for addr in netifaces.ifaddresses(iface).get(address_family, [])
-        if addr.get('netmask') != HOST_ONLY_NETWORK_MASK
-    ))
 
+def new_socket(address_family, iface=""):
 
-def normalize_interface_choice(choice, address_family):
-    if choice is InterfaceChoice.Default:
-        choice = ['0.0.0.0']
-    elif choice is InterfaceChoice.All:
-        choice = get_all_addresses(address_family)
-    return choice
-
-
-def new_socket():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    assert address_family in [netifaces.AF_INET,netifaces.AF_INET6], 'Only IPv4 and IPv6 are supported'
+    s = socket.socket(address_family, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     # SO_REUSEADDR should be equivalent to SO_REUSEPORT for
@@ -1624,12 +1511,44 @@ def new_socket():
 
     # OpenBSD needs the ttl and loop values for the IP_MULTICAST_TTL and
     # IP_MULTICAST_LOOP socket options as an unsigned char.
-    ttl = struct.pack(b'B', 255)
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
-    loop = struct.pack(b'B', 1)
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loop)
 
     s.bind(('', _MDNS_PORT))
+    if address_family == netifaces.AF_INET: # IPv4
+        if iface:
+            try:
+                ifaddr = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]["addr"]
+            except:
+                return None
+        ttl = struct.pack('@i', 255)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
+        #loopv = struct.pack(b'B', 1)
+        #s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
+        addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
+        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+        mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
+        try:
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        except:
+            pass
+        if iface:
+            s.setsockopt(
+                socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ifaddr))
+    else:
+        ttl = struct.pack('@i', 2)
+        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
+        addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
+        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+        mreq = group_bin + struct.pack('@I', 0)
+        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+        if iface:
+            try:
+                ifaddr = socket.getaddrinfo(netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]["addr"],_MDNS_PORT)[0][4][3]
+            except:
+                return None
+            #We need the interface index
+            s.setsockopt(
+                socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, struct.pack("I",ifaddr))
+
     return s
 
 
@@ -1647,47 +1566,27 @@ class Zeroconf(QuietLogger):
 
     def __init__(
         self,
-        interfaces=InterfaceChoice.All,
+        loop,
+        address_family = [netifaces.AF_INET,netifaces.AF_INET6],
+        iface=""
     ):
         """Creates an instance of the Zeroconf class, establishing
         multicast communications, listening and reaping threads.
 
-        :type interfaces: :class:`InterfaceChoice` or sequence of ip addresses
+        :type iface: :class string Name of the interface
         """
-        # hook for threads
-        self._GLOBAL_DONE = False
+        self.loop = loop
+        self.protocols = {}
 
-        self._listen_socket = new_socket()
-        interfaces = normalize_interface_choice(interfaces, socket.AF_INET)
-
-        self._respond_sockets = []
-
-        for i in interfaces:
-            log.debug('Adding %r to multicast group', i)
-            try:
-                self._listen_socket.setsockopt(
-                    socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
-                    socket.inet_aton(_MDNS_ADDR) + socket.inet_aton(i))
-            except socket.error as e:
-                if get_errno(e) == errno.EADDRINUSE:
-                    log.info(
-                        'Address in use when adding %s to multicast group, '
-                        'it is expected to happen on some systems', i,
+        for af in address_family:
+            sock = new_socket(af,iface)
+            if sock:
+                listen = loop.create_datagram_endpoint(
+                    partial(MCListener,self),
+                    sock=sock,
                     )
-                elif get_errno(e) == errno.EADDRNOTAVAIL:
-                    log.info(
-                        'Address not available when adding %s to multicast '
-                        'group, it is expected to happen on some systems', i,
-                    )
-                    continue
-                else:
-                    raise
+                self.protocols[af] = loop.run_until_complete(listen)
 
-            respond_socket = new_socket()
-            respond_socket.setsockopt(
-                socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(i))
-
-            self._respond_sockets.append(respond_socket)
 
         self.listeners = []
         self.browsers = {}
@@ -1695,37 +1594,23 @@ class Zeroconf(QuietLogger):
         self.servicetypes = {}
 
         self.cache = DNSCache()
-
-        self.condition = threading.Condition()
-
-        self.engine = Engine(self)
-        self.listener = Listener(self)
-        self.engine.add_reader(self.listener, self._listen_socket)
         self.reaper = Reaper(self)
 
         self.debug = None
+        self._GLOBAL_DONE = False
 
     @property
     def done(self):
         return self._GLOBAL_DONE
 
-    def wait(self, timeout):
-        """Calling thread waits for a given number of milliseconds or
-        until notified."""
-        with self.condition:
-            self.condition.wait(timeout / 1000.0)
 
-    def notify_all(self):
-        """Notifies all waiting threads"""
-        with self.condition:
-            self.condition.notify_all()
-
-    def get_service_info(self, type_, name, timeout=3000):
+    async def get_service_info(self, type_, name, timeout=3000):
         """Returns network's service information for a particular
         name and type, or None if no service matches by the timeout,
         which defaults to 3 seconds."""
         info = ServiceInfo(type_, name)
-        if info.request(self, timeout):
+        res = await info.request(self, timeout)
+        if res:
             return info
 
     def add_service_listener(self, type_, listener):
@@ -1746,12 +1631,12 @@ class Zeroconf(QuietLogger):
         for listener in [k for k in self.browsers]:
             self.remove_service_listener(listener)
 
-    def register_service(self, info, ttl=_DNS_TTL, allow_name_change=False):
+    async def register_service(self, info, ttl=_DNS_TTL, allow_name_change=False):
         """Registers service information to the network with a default TTL
         of 60 seconds.  Zeroconf will then respond to requests for
         information for that service.  The name of the service may be
         changed if needed to make it unique on the network."""
-        self.check_service(info, allow_name_change)
+        await self.check_service(info, allow_name_change)
         self.services[info.name.lower()] = info
         if info.type in self.servicetypes:
             self.servicetypes[info.type] += 1
@@ -1762,7 +1647,7 @@ class Zeroconf(QuietLogger):
         i = 0
         while i < 3:
             if now < next_time:
-                self.wait(next_time - now)
+                await asyncio.sleep((next_time - now)/1000.0)
                 now = current_time_millis()
                 continue
             out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1783,7 +1668,7 @@ class Zeroconf(QuietLogger):
             i += 1
             next_time += _REGISTER_TIME
 
-    def unregister_service(self, info):
+    async def unregister_service(self, info):
         """Unregister a service."""
         try:
             del self.services[info.name.lower()]
@@ -1798,7 +1683,7 @@ class Zeroconf(QuietLogger):
         i = 0
         while i < 3:
             if now < next_time:
-                self.wait(next_time - now)
+                await asyncio.sleep((next_time - now)/1000.0)
                 now = current_time_millis()
                 continue
             out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1818,7 +1703,7 @@ class Zeroconf(QuietLogger):
             i += 1
             next_time += _UNREGISTER_TIME
 
-    def unregister_all_services(self):
+    async def unregister_all_services(self):
         """Unregister all registered services."""
         if len(self.services) > 0:
             now = current_time_millis()
@@ -1826,7 +1711,7 @@ class Zeroconf(QuietLogger):
             i = 0
             while i < 3:
                 if now < next_time:
-                    self.wait(next_time - now)
+                    await asyncio.sleep((next_time - now)/1000.0)
                     now = current_time_millis()
                     continue
                 out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1846,7 +1731,7 @@ class Zeroconf(QuietLogger):
                 i += 1
                 next_time += _UNREGISTER_TIME
 
-    def check_service(self, info, allow_name_change):
+    async def check_service(self, info, allow_name_change):
         """Checks the network for a unique service name, modifying the
         ServiceInfo passed in if it is not unique."""
 
@@ -1878,14 +1763,14 @@ class Zeroconf(QuietLogger):
                 i = 0
 
             if now < next_time:
-                self.wait(next_time - now)
+                await asyncio.sleep((next_time - now)/1000.0)
                 now = current_time_millis()
                 continue
 
             out = DNSOutgoing(_FLAGS_QR_QUERY | _FLAGS_AA)
             self.debug = out
             out.add_question(DNSQuestion(info.type, _TYPE_PTR, _CLASS_IN))
-            out.add_authorative_answer(DNSPointer(
+            out.add_authoritative_answer(DNSPointer(
                 info.type, _TYPE_PTR, _CLASS_IN, _DNS_TTL, info.name))
             self.send(out)
             i += 1
@@ -1901,13 +1786,13 @@ class Zeroconf(QuietLogger):
             for record in self.cache.entries_with_name(question.name):
                 if question.answered_by(record) and not record.is_expired(now):
                     listener.update_record(self, now, record)
-        self.notify_all()
+
 
     def remove_listener(self, listener):
         """Removes a listener."""
         try:
             self.listeners.remove(listener)
-            self.notify_all()
+
         except Exception as e:  # TODO stop catching all Exceptions
             log.exception('Unknown error, possibly benign: %r', e)
 
@@ -1916,7 +1801,7 @@ class Zeroconf(QuietLogger):
         a record."""
         for listener in self.listeners:
             listener.update_record(self, now, rec)
-        self.notify_all()
+
 
     def handle_response(self, msg):
         """Deal with incoming response packets.  All answers
@@ -2003,7 +1888,7 @@ class Zeroconf(QuietLogger):
             out.id = msg.id
             self.send(out, addr, port)
 
-    def send(self, out, addr=_MDNS_ADDR, port=_MDNS_PORT):
+    def send(self, out, addr=None, port=None):
         """Sends an outgoing packet."""
         packet = out.packet()
         if len(packet) > _MAX_MSG_ABSOLUTE:
@@ -2011,36 +1896,40 @@ class Zeroconf(QuietLogger):
                                   out, len(packet), packet)
             return
         log.debug('Sending %r (%d bytes) as %r...', out, len(packet), packet)
-        for s in self._respond_sockets:
+        for af,sp in self.protocols.items():
+            if addr:
+                addrfam = socket.getaddrinfo(addr, None)[0][0]
+                if addrfam != af:
+                    continue
+
             if self._GLOBAL_DONE:
                 return
+            s, p = sp
             try:
-                bytes_sent = s.sendto(packet, 0, (addr, port))
+                if af == netifaces.AF_INET:
+                    s.sendto(packet,(addr or _MDNS_ADDR, port or _MDNS_PORT ))
+                else:
+                    s.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT ))
             except Exception:   # TODO stop catching all Exceptions
                 # on send errors, log the exception and keep going
                 self.log_exception_warning()
-            else:
-                if bytes_sent != len(packet):
-                    self.log_warning_once(
-                        '!!! sent %d out of %d bytes to %r' % (
-                            bytes_sent, len(packet)), s)
 
-    def close(self):
+    async def close(self):
         """Ends the background threads, and prevent this instance from
         servicing further queries."""
         if not self._GLOBAL_DONE:
             self._GLOBAL_DONE = True
             # remove service listeners
             self.remove_all_service_listeners()
-            self.unregister_all_services()
+            await self.unregister_all_services()
 
             # shutdown recv socket and thread
-            self.engine.del_reader(self._listen_socket)
-            self._listen_socket.close()
-            self.engine.join()
+            for t,proto in self.protocols.values():
+                try:
+                    proto.connection_lost(None)
+                    proto.transport.close()
+                except:
+                    pass
 
             # shutdown the rest
-            self.notify_all()
-            self.reaper.join()
-            for s in self._respond_sockets:
-                s.close()
+            self.reaper.task.cancel()
