@@ -119,6 +119,7 @@ Here's an example of browsing for a service:
     Discovery and service registration use *all* available network interfaces by default
     and both IPv4 and IPv6. If you want to customize that you need to specify:
         ``address_family``: a list containing netifaces.AF_NET and/or netiface.AF_INET6
+
         ``iface``: the name of the interface (e.g. "lo", "eth0")
     when constructing ``Zeroconf`` object (see the code for details).
 
@@ -154,4 +155,4 @@ Changelog
 License
 =======
 
-MIT, see COPYING file for details.
+GPL, see COPYING file for details.

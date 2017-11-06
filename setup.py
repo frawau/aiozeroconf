@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-from __future__ import absolute_import, division, print_function
+#!/usr/bin/env python3
 
 from io import open
 
@@ -18,14 +17,14 @@ version = (
 )
 
 setup(
-    name='zeroconf',
+    name='aiozeroconf',
     version=version,
-    description='Pure Python Multicast DNS Service Discovery Library '
+    description='Pure Python Multicast DNS Service Discovery Library for asyncio '
     '(Bonjour/Avahi compatible)',
     long_description=readme,
-    author='Paul Scott-Murphy, William McBrine, Jakub Stasiak',
-    url='https://github.com/jstasiak/python-zeroconf',
-    py_modules=['zeroconf'],
+    author='François Wautier, Paul Scott-Murphy, William McBrine, Jakub Stasiak',
+    url='https://github.com/frawau/aiozeroconf',
+    py_modules=['aiozeroconf'],
     platforms=['unix', 'linux', 'osx'],
     license='LGPL',
     zip_safe=False,
@@ -39,12 +38,6 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Topic :: Software Development :: Libraries',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: Implementation :: CPython',
@@ -52,15 +45,13 @@ setup(
     ],
     keywords=[
         'Bonjour', 'Avahi', 'Zeroconf', 'Multicast DNS', 'Service Discovery',
-        'mDNS',
+        'mDNS', 'asyncio',
     ],
     install_requires=[
-        'enum-compat',
         # netifaces 0.10.5 has a bug that results in all interfaces' netmasks
         # to be 255.255.255.255 on Windows which breaks things. See:
         # * https://github.com/jstasiak/python-zeroconf/issues/84
         # * https://bitbucket.org/al45tair/netifaces/issues/39/netmask-is-always-255255255255
-        'netifaces!=0.10.5',
-        'six',
+        'netifaces!=0.10.5'
     ],
 )
