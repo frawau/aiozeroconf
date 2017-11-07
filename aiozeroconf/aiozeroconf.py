@@ -62,7 +62,7 @@ __license__ = 'GPL'
 
 __all__ = [
     "__version__",
-    "Zeroconf", "ServiceInfo", "ServiceBrowser",
+    "Zeroconf", "ServiceInfo", "ServiceBrowser", "ZeroconfServiceTypes",
     "Error", "InterfaceChoice", "ServiceStateChange",
 ]
 
