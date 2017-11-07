@@ -4,7 +4,7 @@ from distutils.core import setup
 
 version = "0.1.0"
 
-setup(
+setup(name='aiozeroconf',
     packages=['aiozeroconf'],
     version=version,
     author='Paul Scott-Murphy, William McBrine, Jakub Stasiak, François Wautier',
