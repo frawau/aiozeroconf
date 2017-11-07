@@ -43,7 +43,6 @@ Python compatibility
 --------------------
 
 * CPython 3.5+
-* PyPy3 2.4+
 
 Versioning
 ----------
