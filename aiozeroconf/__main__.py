@@ -22,12 +22,12 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-""" Example of browsing for a service (in this case, HTTP) """
-
 import asyncio
 import logging
 import socket
 import sys
+import argparse
+import netifaces
 
 from aiozeroconf import ServiceBrowser, ServiceStateChange, Zeroconf
 
@@ -57,22 +57,43 @@ async def on_service_state_change_process(zc,service_type, name):
 async def do_close(zc):
     await zc.close()
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.CRITICAL)
-    if len(sys.argv) > 1:
-        assert sys.argv[1:] == ['--debug']
-        logging.getLogger('zeroconf').setLevel(logging.DEBUG)
 
-    loop = asyncio.get_event_loop()
+
+parser = argparse.ArgumentParser(description="Track and interact with Lifx light bulbs.")
+parser.add_argument('-i', "--iface",  default="",
+                    help="Name of the inteface to use.")
+parser.add_argument('-p', "--protocol", choices=['ipv4', 'ipv6', 'both'], default="ipv4",
+                    help="What IP protocol to use.")
+parser.add_argument("-s", "--service", default="_http._tcp.local.",
+                    help="The service to browse.")
+parser.add_argument("-d","--debug", action='store_true', default=False,
+                    help="Set debug mode.")
+try:
+    opts = parser.parse_args()
+except Exception as e:
+    parser.error("Error: " + str(e))
+
+if opts.protocol == "ipv4":
+    proto=[netifaces.AF_INET]
+elif opts.protocol == "ipv6":
+    proto=[netifaces.AF_INET6]
+else:
+    proto=[netifaces.AF_INET,netifaces.AF_INET6]
+
+
+loop = asyncio.get_event_loop()
+logging.basicConfig(level=logging.CRITICAL)
+if opts.debug:
+    logging.getLogger('zeroconf').setLevel(logging.DEBUG)
     loop.set_debug(True)
 
-    zc=Zeroconf(loop)
-    print("\nBrowsing services, press Ctrl-C to exit...\n")
-    browser = ServiceBrowser(zc, "_http._tcp.local.", handlers=[on_service_state_change])
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        print("Unregistering...")
-        loop.run_until_complete(do_close(zc))
-    finally:
-        loop.close()
+zc=Zeroconf(loop,proto,iface=opts.iface)
+print("\nBrowsing services, press Ctrl-C to exit...\n")
+browser = ServiceBrowser(zc, opts.service, handlers=[on_service_state_change])
+try:
+    loop.run_forever()
+except KeyboardInterrupt:
+    print("Unregistering...")
+    loop.run_until_complete(do_close(zc))
+finally:
+    loop.close()

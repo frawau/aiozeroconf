@@ -15,8 +15,8 @@ from threading import Event
 
 from six import indexbytes
 
-import zeroconf as r
-from zeroconf import (
+import aiozeroconf as r
+from aiozeroconf import (
     DNSHinfo,
     DNSText,
     ServiceBrowser,

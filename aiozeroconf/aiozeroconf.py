@@ -57,7 +57,7 @@ import netifaces
 __author__ = 'François Wautier'
 __maintainer__ = 'François Wautier <francois@wautier.eu>'
 __version__ = '0.1.0'
-__license__ = 'MIT'
+__license__ = 'GPL'
 
 
 __all__ = [

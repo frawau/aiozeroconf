@@ -84,7 +84,7 @@ Here's an example of browsing for a service:
 .. code-block:: python
 
     import asyncio
-    from zeroconf import ServiceBrowser, Zeroconf
+    from aiozeroconf import ServiceBrowser, Zeroconf
 
     async def do_close(zc):
         await zc.close()
@@ -128,7 +128,7 @@ If you don't know the name of the service you need to browse for, try:
 .. code-block:: python
 
     import asyncio
-    from zeroconf import Zeroconf, ZeroconfServiceTypes
+    from aiozeroconf import Zeroconf, ZeroconfServiceTypes
 
     async def list_service(zc):
         los = await ZeroconfServiceTypes.find(zc,timeout=0.5)
