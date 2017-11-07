@@ -1,17 +1,8 @@
 #!/usr/bin/env python3
 
-from io import open
+from distutils.core import setup
 
-from os.path import abspath, dirname, join
-
-from setuptools import setup
-
-
-version = (
-    [l for l in open(join(PROJECT_ROOT, 'aiozeroconf/aiozeroconf.py')) if '__version__' in l][0]
-    .split('=')[-1]
-    .strip().strip('\'"')
-)
+version = "0.1.0"
 
 setup(
     packages=['aiozeroconf'],

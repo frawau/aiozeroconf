@@ -37,9 +37,7 @@ Compared to some other Zeroconf/Bonjour/Avahi Python packages, python-zeroconf:
 
 * isn't tied to Bonjour or Avahi
 * doesn't use D-Bus
-* doesn't force you to use particular event loop or Twisted
 * is pip-installable
-* has PyPI distribution
 
 Python compatibility
 --------------------
