@@ -1087,13 +1087,15 @@ class MCListener(asyncio.Protocol,QuietLogger):
     group to which DNS messages are sent, allowing the implementation
     to cache information as it arrives."""
 
-    def __init__(self, zc):
+    def __init__(self, zc,future):
         asyncio.Protocol.__init__(self)
         self.zc = zc
         self.data = None
+        self.future = future
 
     def connection_made(self, transport):
         self.transport = transport
+        self.future.set_result((transport,self))
 
     def datagram_received(self, data, addrs):
         try:
@@ -1577,17 +1579,19 @@ class Zeroconf(QuietLogger):
         """
         self.loop = loop
         self.protocols = {}
+        self.futures = {}
 
         for af in address_family:
             sock = new_socket(af,iface)
             if sock:
+                self.futures[af] = asyncio.Future()
                 listen = loop.create_datagram_endpoint(
-                    partial(MCListener,self),
+                    partial(MCListener,self, self.futures[af]),
                     sock=sock,
                     )
-                self.protocols[af] = loop.run_until_complete(listen)
+                xx = asyncio.ensure_future(listen)
 
-
+        self.loop.create_task(self.synchronize())
         self.listeners = []
         self.browsers = {}
         self.services = {}
@@ -1602,6 +1606,13 @@ class Zeroconf(QuietLogger):
     @property
     def done(self):
         return self._GLOBAL_DONE
+
+    async def synchronize(self):
+        loaf = [ x for x in self.futures]
+        for af in loaf:
+            print("Got {}".format(af))
+            await self.futures[af]
+            self.protocols[af] = self.futures[af].result()
 
 
     async def get_service_info(self, type_, name, timeout=3000):
