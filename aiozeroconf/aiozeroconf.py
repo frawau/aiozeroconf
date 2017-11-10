@@ -1610,7 +1610,6 @@ class Zeroconf(QuietLogger):
     async def synchronize(self):
         loaf = [ x for x in self.futures]
         for af in loaf:
-            print("Got {}".format(af))
             await self.futures[af]
             self.protocols[af] = self.futures[af].result()
 
