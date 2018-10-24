@@ -1540,8 +1540,6 @@ def new_socket(address_family, iface=""):
         s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
         addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
         group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        mreq = group_bin + struct.pack('@I', 0)
-        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
         if iface:
             try:
                 ifaddr = socket.getaddrinfo(netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]["addr"],_MDNS_PORT)[0][4][3]
@@ -1550,6 +1548,10 @@ def new_socket(address_family, iface=""):
             #We need the interface index
             s.setsockopt(
                 socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, struct.pack("I",ifaddr))
+            mreq = group_bin + struct.pack('@I', ifaddr)
+        else:
+            mreq = group_bin + struct.pack('@I', 0)
+        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
     return s
 
