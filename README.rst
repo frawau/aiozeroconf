@@ -88,15 +88,15 @@ Here's an example of browsing for a service:
 
     class MyListener(object):
 
-        def remove_service(self, zeroconf, type, name):
+        def remove_service(self, zeroconf, type_, name):
             print("Service %s removed" % (name,))
 
-        def add_service(self, zeroconf, type, name):
-            asyncio.ensure_future(self.found_service(zc,type,name))
+        def add_service(self, zeroconf, type_, name):
+            asyncio.ensure_future(self.found_service(zeroconf, type_, name))
 
-        async def found_service(self,zc,type,name):
-            info = await zc.get_service_info(type,name)
-            print ("Adding {}".format(info))
+        async def found_service(self, zeroconf, type_, name):
+            info = await zeroconf.get_service_info(type_, name)
+            print("Adding {}".format(info))
 
     loop = asyncio.get_event_loop()
     zeroconf = Zeroconf(loop)
@@ -106,7 +106,7 @@ Here's an example of browsing for a service:
         loop.run_forever()
     except KeyboardInterrupt:
         print("Unregistering...")
-        loop.run_until_complete(do_close(zc))
+        loop.run_until_complete(do_close(zeroconf))
     finally:
         loop.close()
 
