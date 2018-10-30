@@ -1521,13 +1521,15 @@ def new_socket(address_family, iface=""):
                 ifaddr = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]["addr"]
             except:
                 return None
+        else:
+            ifaddr = '0.0.0.0'
         ttl = struct.pack('@i', 255)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         #loopv = struct.pack(b'B', 1)
         #s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
         addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
         group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
+        mreq = group_bin + socket.inet_aton(ifaddr)
         try:
             s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         except:
