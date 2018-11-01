@@ -44,7 +44,6 @@ import enum
 import errno
 import logging
 import re
-import select
 import socket
 import struct
 import sys
@@ -54,6 +53,7 @@ from abc import abstractmethod
 from functools import reduce, partial
 
 import netifaces
+from typing import List, Union
 
 __author__ = 'François Wautier'
 __maintainer__ = 'François Wautier <francois@wautier.eu>'
@@ -1070,15 +1070,10 @@ class MCListener(asyncio.Protocol, QuietLogger):
     group to which DNS messages are sent, allowing the implementation
     to cache information as it arrives."""
 
-    def __init__(self, zc, future):
+    def __init__(self, zc, senders):
         asyncio.Protocol.__init__(self)
         self.zc = zc
-        self.data = None
-        self.future = future
-
-    def connection_made(self, transport):
-        self.transport = transport
-        self.future.set_result((transport, self))
+        self.senders = senders
 
     def datagram_received(self, data, addrs):
         try:
@@ -1093,12 +1088,11 @@ class MCListener(asyncio.Protocol, QuietLogger):
 
         log.debug('Received from %r:%r: %r ', addr, port, data)
 
-        self.data = data
         msg = DNSIncoming(data)
         if not msg.valid:
-            pass
+            return
 
-        elif msg.is_query():
+        if msg.is_query():
             # Always multicast responses
             if port == _MDNS_PORT:
                 self.zc.handle_query(msg, _MDNS_ADDR, _MDNS_PORT)
@@ -1112,8 +1106,9 @@ class MCListener(asyncio.Protocol, QuietLogger):
         else:
             self.zc.handle_response(msg)
 
-    def connection_lost(self, exc):
-        super().connection_lost(exc)
+    def sendto(self, data, destination):
+        for socket in self.senders.values():
+            socket.sendto(data, destination)
 
 
 class Reaper():
@@ -1466,9 +1461,23 @@ class ZeroconfServiceTypes(object):
         return tuple(sorted(listener.found_services))
 
 
-def new_socket(address_family, iface=""):
-    assert address_family in [netifaces.AF_INET, netifaces.AF_INET6], 'Only IPv4 and IPv6 are supported'
-    s = socket.socket(address_family, socket.SOCK_DGRAM)
+def normalize_interface_choice(iface: Union[str, None]) -> List[str]:
+    """
+    Normalize interface provided into a list of addresses
+    :param iface: name of a valid interface or None
+    """
+    interfaces = netifaces.interfaces()
+
+    if iface:
+        if iface not in interfaces:
+            raise ValueError('invalid interface name: {}'.format(iface))
+        interfaces = [iface]
+
+    return interfaces
+
+
+def new_inet_socket(port: int = _MDNS_PORT) -> socket.socket:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     # SO_REUSEADDR should be equivalent to SO_REUSEPORT for
@@ -1490,84 +1499,147 @@ def new_socket(address_family, iface=""):
             if not err.errno == errno.ENOPROTOOPT:
                 raise
 
-    # OpenBSD needs the ttl and loop values for the IP_MULTICAST_TTL and
-    # IP_MULTICAST_LOOP socket options as an unsigned char.
-
-    interfaces = [iface] if iface else netifaces.interfaces()
-
-    s.bind(('', _MDNS_PORT))
-    if address_family == netifaces.AF_INET:  # IPv4
-        ttl = struct.pack('@i', 255)
+    if port is _MDNS_PORT:
+        # OpenBSD needs the ttl and loop values for the IP_MULTICAST_TTL and
+        # IP_MULTICAST_LOOP socket options as an unsigned char.
+        ttl = struct.pack(b'B', 255)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
-        # loopv = struct.pack(b'B', 1)
-        # s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
+        # loop = struct.pack(b'B', 1)
+        # s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loop)
 
-        addresses = []
-        for interface in interfaces:
-            addr_list = netifaces.ifaddresses(interface)
-            if address_family in addr_list:
-                addresses.append((interface, addr_list[address_family][0]['addr']))
+    s.bind(('', port))
+    return s
 
-        if not addresses:
-            return None
 
-        addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
-        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+def setup_inet(interfaces: List[str]):
+    """
+    Return new sockets for sending and receiving
+    :param interfaces:
+    :return:
+    """
+    # Create listening socket
+    listener = new_inet_socket()
 
-        for interface, addr in addresses:
-            bind_addr = socket.inet_aton(addr)
-            try:
-                s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, group_bin + bind_addr)
-                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, bind_addr)
-            except socket.error as e:
-                _errno = get_errno(e)
-                if _errno == errno.EADDRINUSE:
-                    log.info('Address in use when adding %s to multicast group', interface)
-                elif _errno == errno.EADDRNOTAVAIL:
-                    log.info('Address not available when adding %s to multicast', interface)
-                    continue
-                elif _errno == errno.EINVAL:
-                    log.info('Interface %s does not support multicast', interface)
-                    continue
-                else:
-                    raise
+    # List of sender sockets
+    senders = {}
+
+    addresses = []
+    for interface in interfaces:
+        addr_list = netifaces.ifaddresses(interface)
+        if netifaces.AF_INET in addr_list:
+            addresses.append((interface, addr_list[netifaces.AF_INET][0]['addr']))
+
+    if not addresses:
+        raise ValueError('No interface for IPv4')
+
+    addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
+    group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+
+    for interface, addr in addresses:
+        bind_addr = socket.inet_aton(addr)
+        try:
+            log.info('binding on %s -> %s', interface, addr)
+            listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, group_bin + bind_addr)
+        except socket.error as e:
+            _errno = get_errno(e)
+            if _errno == errno.EADDRINUSE:
+                log.info('Address in use when adding %s to multicast group', interface)
+            elif _errno == errno.EADDRNOTAVAIL:
+                log.info('Address not available when adding %s to multicast', interface)
+                continue
+            elif _errno == errno.EINVAL:
+                log.info('Interface %s does not support multicast', interface)
+                continue
+            else:
+                raise
+
+        sender = new_inet_socket()
+        sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, bind_addr)
+        senders[interface] = sender
+
+    return listener, senders
+
+
+def new_inet6_socket(port: int = _MDNS_PORT) -> socket.socket:
+    s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    # SO_REUSEADDR should be equivalent to SO_REUSEPORT for
+    # multicast UDP sockets (p 731, "TCP/IP Illustrated,
+    # Volume 2"), but some BSD-derived systems require
+    # SO_REUSEPORT to be specified explicity.  Also, not all
+    # versions of Python have SO_REUSEPORT available.
+    # Catch OSError and socket.error for kernel versions <3.9 because lacking
+    # SO_REUSEPORT support.
+    try:
+        reuseport = socket.SO_REUSEPORT
+    except AttributeError:
+        pass
     else:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, reuseport, 1)
+        except (OSError, socket.error) as err:
+            # OSError on python 3, socket.error on python 2
+            if not err.errno == errno.ENOPROTOOPT:
+                raise
+
+    if port is _MDNS_PORT:
         ttl = struct.pack('@i', 2)
         s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
 
-        indexes = []
-        for interface in interfaces:
-            addr_list = netifaces.ifaddresses(interface)
-            if address_family in addr_list:
-                addr = addr_list[address_family][0]["addr"]
-                idx = socket.getaddrinfo(addr, _MDNS_PORT)[0][4][3]
-                indexes.append((interface, idx))
-
-        if not indexes:
-            return None
-
-        addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
-        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-
-        for interface, idx in indexes:
-            bind_idx = struct.pack('@I', idx)
-            try:
-                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, group_bin + bind_idx)
-                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, bind_idx)
-            except socket.error as e:
-                _errno = get_errno(e)
-                if _errno == errno.EADDRINUSE:
-                    log.info('Address in use when adding %s to multicast group', interface)
-                elif _errno == errno.EADDRNOTAVAIL:
-                    log.info('Address not available when adding %s to multicast', interface)
-                    continue
-                elif _errno == errno.EINVAL:
-                    log.info('Interface %s does not support multicast', interface)
-                    continue
-                else:
-                    raise
-
+    s.bind(('', port))
     return s
+
+
+def setup_inet6(interfaces: List[str]):
+    """
+    Return new sockets for sending and receiving
+    :param interfaces:
+    :return:
+    """
+    # Create listening socket
+    listener = new_inet6_socket()
+
+    # List of sender sockets
+    senders = {}
+
+    indexes = []
+    for interface in interfaces:
+        addr_list = netifaces.ifaddresses(interface)
+        if netifaces.AF_INET6 in addr_list:
+            addr = addr_list[netifaces.AF_INET6][0]["addr"]
+            idx = socket.getaddrinfo(addr, _MDNS_PORT)[0][4][3]
+            indexes.append((interface, idx))
+
+    if not indexes:
+        raise ValueError('No interface for IPv4')
+
+    addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
+    group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+
+    for interface, idx in indexes:
+        bind_idx = struct.pack('@I', idx)
+        try:
+            log.info('binding on %s -> %s', interface, idx)
+            listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, group_bin + bind_idx)
+        except socket.error as e:
+            _errno = get_errno(e)
+            if _errno == errno.EADDRINUSE:
+                log.info('Address in use when adding %s to multicast group', interface)
+            elif _errno == errno.EADDRNOTAVAIL:
+                log.info('Address not available when adding %s to multicast', interface)
+                continue
+            elif _errno == errno.EINVAL:
+                log.info('Interface %s does not support multicast', interface)
+                continue
+            else:
+                raise
+
+        sender = new_inet6_socket()
+        sender.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, bind_idx)
+        senders[interface] = sender
+
+    return listener, senders
 
 
 def get_errno(e):
@@ -1585,7 +1657,7 @@ class Zeroconf(QuietLogger):
             self,
             loop,
             address_family=[netifaces.AF_INET, netifaces.AF_INET6],
-            iface=""
+            iface=None
     ):
         """Creates an instance of the Zeroconf class, establishing
         multicast communications, listening and reaping threads.
@@ -1594,19 +1666,10 @@ class Zeroconf(QuietLogger):
         """
         self.loop = loop
         self.protocols = {}
-        self.futures = {}
 
-        for af in address_family:
-            sock = new_socket(af, iface)
-            if sock:
-                self.futures[af] = asyncio.Future()
-                listen = loop.create_datagram_endpoint(
-                    partial(MCListener, self, self.futures[af]),
-                    sock=sock,
-                )
-                xx = asyncio.ensure_future(listen)
+        self.interfaces = normalize_interface_choice(iface)
 
-        self.loop.create_task(self.synchronize())
+        self.loop.create_task(self.initialize(address_family))
         self.listeners = []
         self.browsers = {}
         self.services = {}
@@ -1622,20 +1685,36 @@ class Zeroconf(QuietLogger):
     def done(self):
         return self._GLOBAL_DONE
 
-    async def synchronize(self):
-        loaf = [x for x in self.futures]
-        for af in loaf:
-            await self.futures[af]
-            self.protocols[af] = self.futures[af].result()
+    async def initialize(self, address_family):
+        """
+        Initialize communication for all provided interfaces
+        :param address_family: list of AF
+        """
+        for af in address_family:
+            try:
+                if af == netifaces.AF_INET:
+                    listener, senders = setup_inet(self.interfaces)
+                elif af == netifaces.AF_INET6:
+                    listener, senders = setup_inet6(self.interfaces)
+                else:
+                    raise ValueError('Only IPv4 and IPv6 are supported')
+
+                if listener:
+                    _, protocol = await self.loop.create_datagram_endpoint(
+                        partial(MCListener, self, senders),
+                        sock=listener,
+                    )
+                    self.protocols[af] = protocol
+            except Exception as e:
+                log.error('initializing comm af %s on interfaces %s: %s', af, self.interfaces, e)
 
     async def get_service_info(self, type_, name, timeout=3000):
         """Returns network's service information for a particular
         name and type, or None if no service matches by the timeout,
         which defaults to 3 seconds."""
         info = ServiceInfo(type_, name)
-        res = await info.request(self, timeout)
-        if res:
-            return info
+        await info.request(self, timeout)
+        return info
 
     def add_service_listener(self, type_, listener):
         """Adds a listener for a particular service type.  This object
@@ -1918,7 +1997,7 @@ class Zeroconf(QuietLogger):
                                   out, len(packet), packet)
             return
         log.debug('Sending %r (%d bytes) as %r...', out, len(packet), packet)
-        for af, sp in self.protocols.items():
+        for af, proto in self.protocols.items():
             if addr:
                 addrfam = socket.getaddrinfo(addr, None)[0][0]
                 if addrfam != af:
@@ -1926,12 +2005,11 @@ class Zeroconf(QuietLogger):
 
             if self._GLOBAL_DONE:
                 return
-            s, p = sp
             try:
                 if af == netifaces.AF_INET:
-                    s.sendto(packet, (addr or _MDNS_ADDR, port or _MDNS_PORT))
+                    proto.sendto(packet, (addr or _MDNS_ADDR, port or _MDNS_PORT))
                 else:
-                    s.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT))
+                    proto.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT))
             except Exception:  # TODO stop catching all Exceptions
                 # on send errors, log the exception and keep going
                 self.log_exception_warning()
@@ -1946,9 +2024,8 @@ class Zeroconf(QuietLogger):
             await self.unregister_all_services()
 
             # shutdown recv socket and thread
-            for t, proto in self.protocols.values():
+            for proto in self.protocols.values():
                 try:
-                    proto.connection_lost(None)
                     proto.transport.close()
                 except:
                     pass
