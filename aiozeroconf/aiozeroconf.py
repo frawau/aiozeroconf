@@ -62,7 +62,7 @@ __license__ = 'GPL'
 __all__ = [
     "__version__",
     "Zeroconf", "ServiceInfo", "ServiceBrowser", "ZeroconfServiceTypes",
-    "Error", "InterfaceChoice", "ServiceStateChange",
+    "MDNSError", "InterfaceChoice", "ServiceStateChange",
 ]
 
 log = logging.getLogger(__name__)
@@ -296,19 +296,19 @@ def service_type_name(type_):
 # Exceptions
 
 
-class Error(Exception):
+class MDNSError(Exception):
     pass
 
 
-class IncomingDecodeError(Error):
+class IncomingDecodeError(MDNSError):
     pass
 
 
-class NonUniqueNameException(Error):
+class NonUniqueNameException(MDNSError):
     pass
 
 
-class NamePartTooLongException(Error):
+class NamePartTooLongException(MDNSError):
     pass
 
 
@@ -316,7 +316,7 @@ class AbstractMethodException(Error):
     pass
 
 
-class BadTypeInNameException(Error):
+class BadTypeInNameException(MDNSError):
     pass
 
 
