@@ -1375,7 +1375,7 @@ class ServiceInfo(object):
             if cached:
                 self.update_record(zc, now, cached)
 
-        if None not in (self.server, self.address, self.text):
+        if None not in (self.server, self.address, self.text) or timeout == 0:
             return True
 
         try:
