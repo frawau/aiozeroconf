@@ -43,7 +43,10 @@ async def on_service_state_change_process(zc, service_type, name):
     info = await zc.get_service_info(service_type, name)
     print("Service %s of type %s state changed: %s" % (name, service_type, ServiceStateChange.Added))
     if info:
-        print("  Address: %s:%d" % (socket.inet_ntoa(info.address), info.port))
+        if info.address:
+            print("  IPv4 Address: %s:%d" % (socket.inet_ntoa(info.address), info.port))
+        if info.address6:
+            print("  IPv6 Address: %s:%d" % (socket.inet_ntop(netifaces.AF_INET6, info.address6), info.port))
         print("  Weight: %d, priority: %d" % (info.weight, info.priority))
         print("  Server: %s" % (info.server,))
         if info.properties:

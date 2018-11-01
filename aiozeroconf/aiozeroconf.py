@@ -1222,13 +1222,14 @@ class ServiceBrowser():
 class ServiceInfo(object):
     """Service information"""
 
-    def __init__(self, type_, name, address=None, port=None, weight=0,
+    def __init__(self, type_, name, address=None, address6=None, port=None, weight=0,
                  priority=0, properties=None, server=None):
         """Create a service description.
 
         type_: fully qualified service type name
         name: fully qualified service name
         address: IP address as unsigned short, network byte order
+        address6: IPv6 address as 16 byte, network byte order
         port: port that the service runs on
         weight: weight of the service
         priority: priority of the service
@@ -1241,6 +1242,7 @@ class ServiceInfo(object):
         self.type = type_
         self.name = name
         self.address = address
+        self.address6 = address6
         self.port = port
         self.weight = weight
         self.priority = priority
@@ -1331,6 +1333,10 @@ class ServiceInfo(object):
                 # if record.name == self.name:
                 if record.name == self.server:
                     self.address = record.address
+            elif record.type == _TYPE_AAAA:
+                # if record.name == self.name:
+                if record.name == self.server:
+                    self.address6 = record.address
             elif record.type == _TYPE_SRV:
                 if record.name == self.name:
                     self.server = record.server
@@ -1341,6 +1347,9 @@ class ServiceInfo(object):
                     self.update_record(
                         zc, now, zc.cache.get_by_details(
                             self.server, _TYPE_A, _CLASS_IN))
+                    self.update_record(
+                        zc, now, zc.cache.get_by_details(
+                            self.server, _TYPE_AAAA, _CLASS_IN))
             elif record.type == _TYPE_TXT:
                 if record.name == self.name:
                     self._set_text(record.text)
@@ -1360,6 +1369,7 @@ class ServiceInfo(object):
         ]
         if self.server is not None:
             record_types_for_check_cache.append((_TYPE_A, _CLASS_IN))
+            record_types_for_check_cache.append((_TYPE_AAAA, _CLASS_IN))
         for record_type in record_types_for_check_cache:
             cached = zc.cache.get_by_details(self.name, *record_type)
             if cached:
@@ -1393,6 +1403,11 @@ class ServiceInfo(object):
                         out.add_answer_at_time(
                             zc.cache.get_by_details(
                                 self.server, _TYPE_A, _CLASS_IN), now)
+                        out.add_question(
+                            DNSQuestion(self.server, _TYPE_AAAA, _CLASS_IN))
+                        out.add_answer_at_time(
+                            zc.cache.get_by_details(
+                                self.server, _TYPE_AAAA, _CLASS_IN), now)
                     zc.send(out)
                     next_ = now + delay
                     delay *= 2
@@ -1767,6 +1782,10 @@ class Zeroconf(QuietLogger):
                 out.add_answer_at_time(
                     DNSAddress(info.server, _TYPE_A, _CLASS_IN,
                                ttl, info.address), 0)
+            if info.address6:
+                out.add_answer_at_time(
+                    DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN,
+                               ttl, info.address6), 0)
             self.send(out)
             i += 1
             next_time += _REGISTER_TIME
@@ -1802,6 +1821,11 @@ class Zeroconf(QuietLogger):
                 out.add_answer_at_time(
                     DNSAddress(info.server, _TYPE_A, _CLASS_IN, 0,
                                info.address), 0)
+
+            if info.address6:
+                out.add_answer_at_time(
+                    DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN, 0,
+                               info.address6), 0)
             self.send(out)
             i += 1
             next_time += _UNREGISTER_TIME
@@ -1830,6 +1854,10 @@ class Zeroconf(QuietLogger):
                         out.add_answer_at_time(DNSAddress(
                             info.server, _TYPE_A, _CLASS_IN, 0,
                             info.address), 0)
+                    if info.address6:
+                        out.add_answer_at_time(DNSAddress(
+                            info.server, _TYPE_AAAA, _CLASS_IN, 0,
+                            info.address6), 0)
                 self.send(out)
                 i += 1
                 next_time += _UNREGISTER_TIME
