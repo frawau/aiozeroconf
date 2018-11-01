@@ -59,13 +59,11 @@ __maintainer__ = 'François Wautier <francois@wautier.eu>'
 __version__ = '0.1.0'
 __license__ = 'GPL'
 
-
 __all__ = [
     "__version__",
     "Zeroconf", "ServiceInfo", "ServiceBrowser", "ZeroconfServiceTypes",
     "Error", "InterfaceChoice", "ServiceStateChange",
 ]
-
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -321,6 +319,7 @@ class AbstractMethodException(Error):
 class BadTypeInNameException(Error):
     pass
 
+
 # implementation classes
 
 
@@ -354,7 +353,6 @@ class QuietLogger(object):
 
 
 class DNSEntry(object):
-
     """A DNS entry"""
 
     def __init__(self, name, type_, class_):
@@ -402,7 +400,6 @@ class DNSEntry(object):
 
 
 class DNSQuestion(DNSEntry):
-
     """A DNS question entry"""
 
     def __init__(self, name, type_, class_):
@@ -420,7 +417,6 @@ class DNSQuestion(DNSEntry):
 
 
 class DNSRecord(DNSEntry):
-
     """A DNS record - like a DNS entry, but has a TTL"""
 
     def __init__(self, name, type_, class_, ttl):
@@ -480,7 +476,6 @@ class DNSRecord(DNSEntry):
 
 
 class DNSAddress(DNSRecord):
-
     """A DNS address record"""
 
     def __init__(self, name, type_, class_, ttl, address):
@@ -504,7 +499,6 @@ class DNSAddress(DNSRecord):
 
 
 class DNSHinfo(DNSRecord):
-
     """A DNS host information record"""
 
     def __init__(self, name, type_, class_, ttl, cpu, os):
@@ -534,7 +528,6 @@ class DNSHinfo(DNSRecord):
 
 
 class DNSPointer(DNSRecord):
-
     """A DNS pointer record"""
 
     def __init__(self, name, type_, class_, ttl, alias):
@@ -555,7 +548,6 @@ class DNSPointer(DNSRecord):
 
 
 class DNSText(DNSRecord):
-
     """A DNS text record"""
 
     def __init__(self, name, type_, class_, ttl, text):
@@ -580,7 +572,6 @@ class DNSText(DNSRecord):
 
 
 class DNSService(DNSRecord):
-
     """A DNS service record"""
 
     def __init__(self, name, type_, class_, ttl, priority, weight, port, server):
@@ -611,7 +602,6 @@ class DNSService(DNSRecord):
 
 
 class DNSIncoming(QuietLogger):
-
     """Object representation of an incoming DNS packet"""
 
     def __init__(self, data):
@@ -766,7 +756,6 @@ class DNSIncoming(QuietLogger):
 
 
 class DNSOutgoing(object):
-
     """Object representation of an outgoing packet"""
 
     def __init__(self, flags, multicast=True):
@@ -1020,7 +1009,6 @@ class DNSOutgoing(object):
 
 
 class DNSCache(object):
-
     """A cache of DNS entries"""
 
     def __init__(self):
@@ -1080,14 +1068,12 @@ class DNSCache(object):
             return reduce(lambda a, b: a + b, values)
 
 
-
-class MCListener(asyncio.Protocol,QuietLogger):
-
+class MCListener(asyncio.Protocol, QuietLogger):
     """A MCListener is used by this module to listen on the multicast
     group to which DNS messages are sent, allowing the implementation
     to cache information as it arrives."""
 
-    def __init__(self, zc,future):
+    def __init__(self, zc, future):
         asyncio.Protocol.__init__(self)
         self.zc = zc
         self.data = None
@@ -1095,15 +1081,15 @@ class MCListener(asyncio.Protocol,QuietLogger):
 
     def connection_made(self, transport):
         self.transport = transport
-        self.future.set_result((transport,self))
+        self.future.set_result((transport, self))
 
     def datagram_received(self, data, addrs):
         try:
-            assert len(addrs) in [2,4], "What network protocol is that?"
+            assert len(addrs) in [2, 4], "What network protocol is that?"
             if len(addrs) == 2:
                 addr, port = addrs
             else:
-                addr, port, flow, scope =  addrs
+                addr, port, flow, scope = addrs
         except Exception:
             self.log_exception_warning()
             return
@@ -1134,7 +1120,6 @@ class MCListener(asyncio.Protocol,QuietLogger):
 
 
 class Reaper():
-
     """A Reaper is used by this module to remove cache entries that
     have expired."""
 
@@ -1153,7 +1138,6 @@ class Reaper():
 
 
 class ServiceBrowser():
-
     """Used to browse for a service of a specific type.
 
     The listener object will have its add_service() and
@@ -1177,7 +1161,7 @@ class ServiceBrowser():
             listener = handlers
             handlers = None
 
-        if handlers and not isinstance(handlers,list):
+        if handlers and not isinstance(handlers, list):
             self.handlers = [handlers]
         else:
             self.handlers = handlers or []
@@ -1198,9 +1182,9 @@ class ServiceBrowser():
                 if not expired:
                     self.services[service_key] = record
                     if self.listener:
-                        self.listener.add_service(self.zc,self.type, record.alias)
+                        self.listener.add_service(self.zc, self.type, record.alias)
                     for hdlr in self.handlers:
-                        hdlr(self.zc,self.type, record.alias,ServiceStateChange.Added)
+                        hdlr(self.zc, self.type, record.alias, ServiceStateChange.Added)
 
             else:
                 if not expired:
@@ -1208,9 +1192,9 @@ class ServiceBrowser():
                 else:
                     del self.services[service_key]
                     if self.listener:
-                        self.listener.remove_service(self.zc,self.type, record.alias)
+                        self.listener.remove_service(self.zc, self.type, record.alias)
                     for hdlr in self.handlers:
-                        hdlr(self.zc,self.type, record.alias,ServiceStateChange.Removed)
+                        hdlr(self.zc, self.type, record.alias, ServiceStateChange.Removed)
                     return
 
             expires = record.get_expiration_time(75)
@@ -1228,7 +1212,7 @@ class ServiceBrowser():
         while True:
             now = current_time_millis()
             if self.next_time > now:
-                await asyncio.sleep(round((self.next_time - now)/1000.0,2))
+                await asyncio.sleep(round((self.next_time - now) / 1000.0, 2))
             if self.zc.done or self.done:
                 return
             now = current_time_millis()
@@ -1244,7 +1228,6 @@ class ServiceBrowser():
 
 
 class ServiceInfo(object):
-
     """Service information"""
 
     def __init__(self, type_, name, address=None, port=None, weight=0,
@@ -1421,7 +1404,7 @@ class ServiceInfo(object):
                     zc.send(out)
                     next_ = now + delay
                     delay *= 2
-                await asyncio.sleep((min(next_, last) - now)/1000.0)
+                await asyncio.sleep((min(next_, last) - now) / 1000.0)
                 now = current_time_millis()
         except:
             pass
@@ -1455,6 +1438,7 @@ class ZeroconfServiceTypes(object):
     """
     Return all of the advertised services on any local networks
     """
+
     def __init__(self):
         self.found_services = set()
 
@@ -1485,10 +1469,8 @@ class ZeroconfServiceTypes(object):
         return tuple(sorted(listener.found_services))
 
 
-
 def new_socket(address_family, iface=""):
-
-    assert address_family in [netifaces.AF_INET,netifaces.AF_INET6], 'Only IPv4 and IPv6 are supported'
+    assert address_family in [netifaces.AF_INET, netifaces.AF_INET6], 'Only IPv4 and IPv6 are supported'
     s = socket.socket(address_family, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -1517,11 +1499,11 @@ def new_socket(address_family, iface=""):
     interfaces = [iface] if iface else netifaces.interfaces()
 
     s.bind(('', _MDNS_PORT))
-    if address_family == netifaces.AF_INET: # IPv4
+    if address_family == netifaces.AF_INET:  # IPv4
         ttl = struct.pack('@i', 255)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
-        #loopv = struct.pack(b'B', 1)
-        #s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
+        # loopv = struct.pack(b'B', 1)
+        # s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
 
         addresses = []
         for interface in interfaces:
@@ -1597,17 +1579,16 @@ def get_errno(e):
 
 
 class Zeroconf(QuietLogger):
-
     """Implementation of Zeroconf Multicast DNS Service Discovery
 
     Supports registration, unregistration, queries and browsing.
     """
 
     def __init__(
-        self,
-        loop,
-        address_family = [netifaces.AF_INET,netifaces.AF_INET6],
-        iface=""
+            self,
+            loop,
+            address_family=[netifaces.AF_INET, netifaces.AF_INET6],
+            iface=""
     ):
         """Creates an instance of the Zeroconf class, establishing
         multicast communications, listening and reaping threads.
@@ -1619,13 +1600,13 @@ class Zeroconf(QuietLogger):
         self.futures = {}
 
         for af in address_family:
-            sock = new_socket(af,iface)
+            sock = new_socket(af, iface)
             if sock:
                 self.futures[af] = asyncio.Future()
                 listen = loop.create_datagram_endpoint(
-                    partial(MCListener,self, self.futures[af]),
+                    partial(MCListener, self, self.futures[af]),
                     sock=sock,
-                    )
+                )
                 xx = asyncio.ensure_future(listen)
 
         self.loop.create_task(self.synchronize())
@@ -1645,11 +1626,10 @@ class Zeroconf(QuietLogger):
         return self._GLOBAL_DONE
 
     async def synchronize(self):
-        loaf = [ x for x in self.futures]
+        loaf = [x for x in self.futures]
         for af in loaf:
             await self.futures[af]
             self.protocols[af] = self.futures[af].result()
-
 
     async def get_service_info(self, type_, name, timeout=3000):
         """Returns network's service information for a particular
@@ -1694,7 +1674,7 @@ class Zeroconf(QuietLogger):
         i = 0
         while i < 3:
             if now < next_time:
-                await asyncio.sleep((next_time - now)/1000.0)
+                await asyncio.sleep((next_time - now) / 1000.0)
                 now = current_time_millis()
                 continue
             out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1730,7 +1710,7 @@ class Zeroconf(QuietLogger):
         i = 0
         while i < 3:
             if now < next_time:
-                await asyncio.sleep((next_time - now)/1000.0)
+                await asyncio.sleep((next_time - now) / 1000.0)
                 now = current_time_millis()
                 continue
             out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1758,7 +1738,7 @@ class Zeroconf(QuietLogger):
             i = 0
             while i < 3:
                 if now < next_time:
-                    await asyncio.sleep((next_time - now)/1000.0)
+                    await asyncio.sleep((next_time - now) / 1000.0)
                     now = current_time_millis()
                     continue
                 out = DNSOutgoing(_FLAGS_QR_RESPONSE | _FLAGS_AA)
@@ -1810,7 +1790,7 @@ class Zeroconf(QuietLogger):
                 i = 0
 
             if now < next_time:
-                await asyncio.sleep((next_time - now)/1000.0)
+                await asyncio.sleep((next_time - now) / 1000.0)
                 now = current_time_millis()
                 continue
 
@@ -1834,7 +1814,6 @@ class Zeroconf(QuietLogger):
                 if question.answered_by(record) and not record.is_expired(now):
                     listener.update_record(self, now, record)
 
-
     def remove_listener(self, listener):
         """Removes a listener."""
         try:
@@ -1848,7 +1827,6 @@ class Zeroconf(QuietLogger):
         a record."""
         for listener in self.listeners:
             listener.update_record(self, now, rec)
-
 
     def handle_response(self, msg):
         """Deal with incoming response packets.  All answers
@@ -1943,7 +1921,7 @@ class Zeroconf(QuietLogger):
                                   out, len(packet), packet)
             return
         log.debug('Sending %r (%d bytes) as %r...', out, len(packet), packet)
-        for af,sp in self.protocols.items():
+        for af, sp in self.protocols.items():
             if addr:
                 addrfam = socket.getaddrinfo(addr, None)[0][0]
                 if addrfam != af:
@@ -1954,10 +1932,10 @@ class Zeroconf(QuietLogger):
             s, p = sp
             try:
                 if af == netifaces.AF_INET:
-                    s.sendto(packet,(addr or _MDNS_ADDR, port or _MDNS_PORT ))
+                    s.sendto(packet, (addr or _MDNS_ADDR, port or _MDNS_PORT))
                 else:
-                    s.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT ))
-            except Exception:   # TODO stop catching all Exceptions
+                    s.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT))
+            except Exception:  # TODO stop catching all Exceptions
                 # on send errors, log the exception and keep going
                 self.log_exception_warning()
 
@@ -1971,7 +1949,7 @@ class Zeroconf(QuietLogger):
             await self.unregister_all_services()
 
             # shutdown recv socket and thread
-            for t,proto in self.protocols.values():
+            for t, proto in self.protocols.values():
                 try:
                     proto.connection_lost(None)
                     proto.transport.close()
