@@ -1514,44 +1514,79 @@ def new_socket(address_family, iface=""):
     # OpenBSD needs the ttl and loop values for the IP_MULTICAST_TTL and
     # IP_MULTICAST_LOOP socket options as an unsigned char.
 
+    interfaces = [iface] if iface else netifaces.interfaces()
+
     s.bind(('', _MDNS_PORT))
     if address_family == netifaces.AF_INET: # IPv4
-        if iface:
-            try:
-                ifaddr = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]["addr"]
-            except:
-                return None
         ttl = struct.pack('@i', 255)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         #loopv = struct.pack(b'B', 1)
         #s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, loopv)
+
+        addresses = []
+        for interface in interfaces:
+            addr_list = netifaces.ifaddresses(interface)
+            if address_family in addr_list:
+                addresses.append((interface, addr_list[address_family][0]['addr']))
+
+        if not addresses:
+            return None
+
         addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
         group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-        try:
-            s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        except:
-            pass
-        if iface:
-            s.setsockopt(
-                socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ifaddr))
+
+        for interface, addr in addresses:
+            bind_addr = socket.inet_aton(addr)
+            try:
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, group_bin + bind_addr)
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, bind_addr)
+            except socket.error as e:
+                _errno = get_errno(e)
+                if _errno == errno.EADDRINUSE:
+                    log.info('Address in use when adding %s to multicast group', interface)
+                elif _errno == errno.EADDRNOTAVAIL:
+                    log.info('Address not available when adding %s to multicast', interface)
+                    continue
+                elif _errno == errno.EINVAL:
+                    log.info('Interface %s does not support multicast', interface)
+                    continue
+                else:
+                    raise
     else:
         ttl = struct.pack('@i', 2)
         s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
+
+        indexes = []
+        for interface in interfaces:
+            addr_list = netifaces.ifaddresses(interface)
+            if address_family in addr_list:
+                addr = addr_list[address_family][0]["addr"]
+                idx = socket.getaddrinfo(addr, _MDNS_PORT)[0][4][3]
+                indexes.append((interface, idx))
+
+        if not indexes:
+            return None
+
         addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
         group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        if iface:
+
+        for interface, idx in indexes:
+            bind_idx = struct.pack('@I', idx)
             try:
-                ifaddr = socket.getaddrinfo(netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]["addr"],_MDNS_PORT)[0][4][3]
-            except:
-                return None
-            #We need the interface index
-            s.setsockopt(
-                socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, struct.pack("I",ifaddr))
-            mreq = group_bin + struct.pack('@I', ifaddr)
-        else:
-            mreq = group_bin + struct.pack('@I', 0)
-        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, group_bin + bind_idx)
+                s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, bind_idx)
+            except socket.error as e:
+                _errno = get_errno(e)
+                if _errno == errno.EADDRINUSE:
+                    log.info('Address in use when adding %s to multicast group', interface)
+                elif _errno == errno.EADDRNOTAVAIL:
+                    log.info('Address not available when adding %s to multicast', interface)
+                    continue
+                elif _errno == errno.EINVAL:
+                    log.info('Interface %s does not support multicast', interface)
+                    continue
+                else:
+                    raise
 
     return s
 
