@@ -50,6 +50,7 @@ import struct
 import sys
 import asyncio
 import time
+from abc import abstractmethod
 from functools import reduce, partial
 
 import netifaces
@@ -312,10 +313,6 @@ class NamePartTooLongException(MDNSError):
     pass
 
 
-class AbstractMethodException(Error):
-    pass
-
-
 class BadTypeInNameException(MDNSError):
     pass
 
@@ -424,9 +421,9 @@ class DNSRecord(DNSEntry):
         self.ttl = ttl
         self.created = current_time_millis()
 
+    @abstractmethod
     def __eq__(self, other):
-        """Abstract method"""
-        raise AbstractMethodException
+        """All records must implement this"""
 
     def suppressed_by(self, msg):
         """Returns true if any answer in a message can suffice for the
@@ -464,9 +461,9 @@ class DNSRecord(DNSEntry):
         self.created = other.created
         self.ttl = other.ttl
 
+    @abstractmethod
     def write(self, out):
-        """Abstract method"""
-        raise AbstractMethodException
+        """Write data out"""
 
     def to_string(self, other):
         """String representation with additional information"""
