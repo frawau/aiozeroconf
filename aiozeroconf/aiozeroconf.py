@@ -1111,7 +1111,7 @@ class MCListener(asyncio.Protocol, QuietLogger):
             socket.sendto(data, destination)
 
 
-class Reaper():
+class Reaper(object):
     """A Reaper is used by this module to remove cache entries that
     have expired."""
 
@@ -1129,7 +1129,7 @@ class Reaper():
                     self.zc.cache.remove(record)
 
 
-class ServiceBrowser():
+class ServiceBrowser(object):
     """Used to browse for a service of a specific type.
 
     The listener object will have its add_service() and
