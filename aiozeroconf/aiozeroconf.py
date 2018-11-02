@@ -1627,7 +1627,7 @@ def setup_inet6(interfaces: List[str]):
             indexes.append((interface, idx))
 
     if not indexes:
-        raise ValueError('No interface for IPv4')
+        raise ValueError('No interface for IPv6')
 
     addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
     group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
