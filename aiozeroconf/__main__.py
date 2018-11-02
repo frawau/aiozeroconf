@@ -29,7 +29,7 @@ import sys
 import argparse
 import netifaces
 
-from aiozeroconf import ServiceBrowser, ServiceStateChange, Zeroconf
+from aiozeroconf import ServiceBrowser, ServiceStateChange, Zeroconf, ZeroconfServiceTypes
 
 
 def on_service_state_change(zc, service_type, name, state_change):
@@ -60,6 +60,11 @@ async def on_service_state_change_process(zc, service_type, name):
     print('\n')
 
 
+async def list_service(zc):
+    los = await ZeroconfServiceTypes.find(zc, timeout=1)
+    print("Services:\n{}".format('\n'.join(['\t{}'.format(s) for s in los])))
+
+
 async def do_close(zc):
     await zc.close()
 
@@ -71,6 +76,8 @@ parser.add_argument('-p', "--protocol", choices=['ipv4', 'ipv6', 'both'], defaul
                     help="What IP protocol to use.")
 parser.add_argument("-s", "--service", default="_http._tcp.local.",
                     help="The service to browse.")
+parser.add_argument("-f", "--find", action='store_true', default=False,
+                    help="Find services")
 parser.add_argument("-d", "--debug", action='store_true', default=False,
                     help="Set debug mode.")
 try:
@@ -93,9 +100,13 @@ if opts.debug:
 
 zc = Zeroconf(loop, proto, iface=opts.iface)
 print("\nBrowsing services, press Ctrl-C to exit...\n")
-browser = ServiceBrowser(zc, opts.service, handlers=[on_service_state_change])
+
 try:
-    loop.run_forever()
+    if opts.find:
+        loop.run_until_complete(list_service(zc))
+    else:
+        browser = ServiceBrowser(zc, opts.service, handlers=[on_service_state_change])
+        loop.run_forever()
 except KeyboardInterrupt:
     print("Unregistering...")
     loop.run_until_complete(do_close(zc))
