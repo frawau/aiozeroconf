@@ -15,8 +15,8 @@ from threading import Event
 
 from six import indexbytes
 
-import aiozeroconf as r
-from aiozeroconf import (
+import aiozeroconf.aiozeroconf as r
+from aiozeroconf.aiozeroconf import (
     DNSHinfo,
     DNSText,
     ServiceBrowser,
@@ -28,6 +28,9 @@ from aiozeroconf import (
 
 log = logging.getLogger('zeroconf')
 original_logging_level = [None]
+
+# On Mac OS X localhost interface is lo0
+LOCALHOST = 'lo' if 'lo' in netifaces.interfaces() else 'lo0'
 
 
 def setup_module():
@@ -77,8 +80,8 @@ class TestDunder(unittest.TestCase):
 
     def test_dns_record_abc(self):
         record = r.DNSRecord('irrelevant', r._TYPE_SRV, r._CLASS_IN, r._DNS_TTL)
-        self.assertRaises(r.AbstractMethodException, record.__eq__, record)
-        self.assertRaises(r.AbstractMethodException, record.write, None)
+        self.assertRaises(NotImplementedError, record.__eq__, record)
+        self.assertRaises(NotImplementedError, record.write, None)
 
     def test_service_info_dunder(self):
         type_ = "_test-srvc-type._tcp.local."
@@ -86,8 +89,9 @@ class TestDunder(unittest.TestCase):
         registration_name = "%s.%s" % (name, type_)
         info = ServiceInfo(
             type_, registration_name,
-            socket.inet_aton("10.0.1.2"), 80, 0, 0,
-            None, "ash-2.local.")
+            address=socket.inet_aton("10.0.1.2"),
+            port=80, weight=0, priority=0,
+            server="ash-2.local.")
 
         assert not info != info
         repr(info)
@@ -220,7 +224,7 @@ class Names(unittest.TestCase):
 
         async def run_me(loop):
             # instantiate a zeroconf instance
-            zc = Zeroconf(loop,[netifaces.AF_INET],iface="lo")
+            zc = Zeroconf(loop, [netifaces.AF_INET], iface=LOCALHOST)
 
             # create a bunch of servers
             type_ = "_my-service._tcp.local."
@@ -265,9 +269,8 @@ class Names(unittest.TestCase):
             browser.cancel()
             await asyncio.sleep(0.5)
 
-            import zeroconf
-            zeroconf.log.debug('sleep_count %d, sized %d',
-                            sleep_count, longest_packet[0])
+            r.log.debug('sleep_count %d, sized %d',
+                               sleep_count, longest_packet[0])
 
             # now the browser has sent at least one request, verify the size
             assert longest_packet[0] <= r._MAX_MSG_ABSOLUTE
@@ -305,10 +308,10 @@ class Names(unittest.TestCase):
             s.sendto(packet, 0, (r._MDNS_ADDR, r._MDNS_PORT))
             s.sendto(packet, 0, (r._MDNS_ADDR, r._MDNS_PORT))
             await asyncio.sleep(2.0)
-            zeroconf.log.debug('warn %d debug %d was %s',
-                            mocked_log_warn.call_count,
-                            mocked_log_debug.call_count,
-                            call_counts)
+            r.log.debug('warn %d debug %d was %s',
+                               mocked_log_warn.call_count,
+                               mocked_log_debug.call_count,
+                               call_counts)
             assert mocked_log_debug.call_count > call_counts[0]
 
             # close our zeroconf which will close the sockets
@@ -322,29 +325,30 @@ class Names(unittest.TestCase):
             call_counts = mocked_log_warn.call_count, mocked_log_debug.call_count
             # send on a closed socket (force a socket error)
             zc.send(out)
-            zeroconf.log.debug('warn %d debug %d was %s',
-                            mocked_log_warn.call_count,
-                            mocked_log_debug.call_count,
-                            call_counts)
+            r.log.debug('warn %d debug %d was %s',
+                               mocked_log_warn.call_count,
+                               mocked_log_debug.call_count,
+                               call_counts)
             assert mocked_log_warn.call_count > call_counts[0]
             assert mocked_log_debug.call_count > call_counts[0]
             zc.send(out)
-            zeroconf.log.debug('warn %d debug %d was %s',
-                            mocked_log_warn.call_count,
-                            mocked_log_debug.call_count,
-                            call_counts)
+            r.log.debug('warn %d debug %d was %s',
+                               mocked_log_warn.call_count,
+                               mocked_log_debug.call_count,
+                               call_counts)
             assert mocked_log_debug.call_count > call_counts[0] + 2
 
             mocked_log_warn.stop()
             mocked_log_debug.stop()
-            loop=asyncio.get_event_loop()
+            loop = asyncio.get_event_loop()
             loop.run_until_complete(run_me(loop))
 
     def verify_name_change(self, zc, type_, name, number_hosts):
         desc = {'path': '/~paulsm/'}
         info_service = ServiceInfo(
-            type_, '%s.%s' % (name, type_), socket.inet_aton("10.0.1.2"),
-            80, 0, 0, desc, "ash-2.local.")
+            type_, '%s.%s' % (name, type_),
+            address=socket.inet_aton("10.0.1.2"),
+            port=80, weight=0, priority=0, properties=desc, server="ash-2.local.")
 
         # verify name conflict
         self.assertRaises(
@@ -366,7 +370,7 @@ class Names(unittest.TestCase):
                 sleep_count = 0
                 while sleep_count < 40 and \
                         i * records_per_server > len(
-                            zc.cache.entries_with_name(type_)):
+                    zc.cache.entries_with_name(type_)):
                     sleep_count += 1
                     time.sleep(0.05)
 
@@ -394,26 +398,27 @@ class Framework(unittest.TestCase):
         asyncio.set_event_loop(event_loop)
         rv = r.Zeroconf(event_loop)
         event_loop.run_until_complete(run_me(rv))
-        rv = r.Zeroconf(event_loop,[netifaces.AF_INET])
+        rv = r.Zeroconf(event_loop, [netifaces.AF_INET])
         event_loop.run_until_complete(run_me(rv))
-        rv = r.Zeroconf(event_loop,[netifaces.AF_INET],iface="lo")
+        rv = r.Zeroconf(event_loop, [netifaces.AF_INET], iface=LOCALHOST)
         event_loop.run_until_complete(run_me(rv))
         event_loop.close()
 
-class Exceptions(unittest.TestCase):
 
+class Exceptions(unittest.TestCase):
     browser = None
     loop = None
 
     @classmethod
     def setUpClass(cls):
         cls.loop = asyncio.get_event_loop()
-        cls.browser = Zeroconf(cls.loop,[netifaces.AF_INET],iface="lo")
+        cls.browser = Zeroconf(cls.loop, [netifaces.AF_INET], iface=LOCALHOST)
 
     @classmethod
     def tearDownClass(cls):
         async def close_me(cls):
             await cls.browser.close()
+
         cls.loop.run_until_complete(close_me(cls))
         cls.browser = None
         cls.loop.close()
@@ -423,6 +428,7 @@ class Exceptions(unittest.TestCase):
         async def run_me(self):
             with self.assertRaises(r.BadTypeInNameException):
                 await self.browser.get_service_info("type", "type_not")
+
         self.loop.run_until_complete(run_me(self))
 
     def test_bad_service_names(self):
@@ -446,6 +452,7 @@ class Exceptions(unittest.TestCase):
             for name in bad_names_to_try:
                 with self.assertRaises(r.BadTypeInNameException):
                     await self.browser.get_service_info(name, 'x.' + name)
+
         self.loop.run_until_complete(run_me(self))
 
     def test_good_instance_names(self):
@@ -518,64 +525,86 @@ class TestDnsIncoming(unittest.TestCase):
 
 class ServiceTypesQuery(unittest.TestCase):
 
-    def test_integration_with_listener(self):
+    @staticmethod
+    async def run_me_with_listener(zeroconf_registrar):
+        type_ = "_test-srvc-type._tcp.local."
+        name = "xxxyyy"
+        registration_name = "%s.%s" % (name, type_)
 
-        async def run_me(zeroconf_registrar):
-            type_ = "_test-srvc-type._tcp.local."
-            name = "xxxyyy"
-            registration_name = "%s.%s" % (name, type_)
+        desc = {'path': '/~paulsm/'}
+        info = ServiceInfo(
+            type_, registration_name,
+            address=socket.inet_aton("10.0.1.2"),
+            address6=socket.inet_pton(socket.AF_INET6, '::1'),
+            port=80,
+            weight=0,
+            priority=0,
+            properties=desc,
+            server="ash-2.local."
+        )
+        await zeroconf_registrar.register_service(info)
 
-            desc = {'path': '/~paulsm/'}
-            info = ServiceInfo(
-                type_, registration_name,
-                socket.inet_aton("10.0.1.2"), 80, 0, 0,
-                desc, "ash-2.local.")
-            await zeroconf_registrar.register_service(info)
+        try:
+            service_types = await ZeroconfServiceTypes.find(
+                zc=zeroconf_registrar, timeout=1)
+            assert type_ in service_types
 
-            try:
-                service_types = await ZeroconfServiceTypes.find(
-                    zc=zeroconf_registrar, timeout=0.5)
-                assert type_ in service_types
+        finally:
+            await zeroconf_registrar.close()
 
-            finally:
-                await zeroconf_registrar.close()
-
+    def test_integration_with_listener_inet(self):
         event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(event_loop)
-        zeroconf_registrar = Zeroconf(event_loop,[netifaces.AF_INET],iface="lo")
-        event_loop.run_until_complete(run_me(zeroconf_registrar))
+        zeroconf_registrar = Zeroconf(event_loop, [netifaces.AF_INET], iface=LOCALHOST)
+        event_loop.run_until_complete(self.run_me_with_listener(zeroconf_registrar))
         event_loop.close()
 
-    def test_integration_with_subtype_and_listener(self):
-
-        async def run_me(zeroconf_registrar):
-            subtype_ = "_subtype._sub"
-            type_ = "_type._tcp.local."
-            name = "xxxyyy"
-            # Note: discovery returns only DNS-SD type not subtype
-            discovery_type = "%s.%s" % (subtype_, type_)
-            registration_name = "%s.%s" % (name, type_)
-
-            desc = {'path': '/~paulsm/'}
-            info = ServiceInfo(
-                discovery_type, registration_name,
-                socket.inet_aton("10.0.1.2"), 80, 0, 0,
-                desc, "ash-2.local.")
-            await zeroconf_registrar.register_service(info)
-
-            try:
-                service_types = await ZeroconfServiceTypes.find(
-                    zc=zeroconf_registrar, timeout=0.5)
-                assert discovery_type in service_types
-
-            finally:
-                await zeroconf_registrar.close()
-
+    def test_integration_with_listener_inet6(self):
         event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(event_loop)
-        zeroconf_registrar = Zeroconf(event_loop,[netifaces.AF_INET],iface="lo")
-        event_loop.run_until_complete(run_me(zeroconf_registrar))
+        zeroconf_registrar = Zeroconf(event_loop, [netifaces.AF_INET6])
+        event_loop.run_until_complete(self.run_me_with_listener(zeroconf_registrar))
         event_loop.close()
+
+    @staticmethod
+    async def run_me_with_subtype(zeroconf_registrar):
+        subtype_ = "_subtype._sub"
+        type_ = "_type._tcp.local."
+        name = "xxxyyy"
+        # Note: discovery returns only DNS-SD type not subtype
+        discovery_type = "%s.%s" % (subtype_, type_)
+        registration_name = "%s.%s" % (name, type_)
+
+        desc = {'path': '/~paulsm/'}
+        info = ServiceInfo(
+            discovery_type, registration_name,
+            address=socket.inet_aton("10.0.1.2"), port=80, weight=0, priority=0,
+            address6=socket.inet_pton(socket.AF_INET6, '::1'),
+            properties=desc, server="ash-2.local.")
+        await zeroconf_registrar.register_service(info)
+
+        try:
+            service_types = await ZeroconfServiceTypes.find(
+                zc=zeroconf_registrar, timeout=0.5)
+            assert discovery_type in service_types
+
+        finally:
+            await zeroconf_registrar.close()
+
+    def test_integration_with_subtype_and_listener_inet(self):
+        event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(event_loop)
+        zeroconf_registrar = Zeroconf(event_loop, [netifaces.AF_INET], iface=LOCALHOST)
+        event_loop.run_until_complete(self.run_me_with_subtype(zeroconf_registrar))
+        event_loop.close()
+
+    def test_integration_with_subtype_and_listener_inet6(self):
+        event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(event_loop)
+        zeroconf_registrar = Zeroconf(event_loop, [netifaces.AF_INET6])
+        event_loop.run_until_complete(self.run_me_with_subtype(zeroconf_registrar))
+        event_loop.close()
+
 
 class ListenerTest(unittest.TestCase):
 
@@ -593,7 +622,7 @@ class ListenerTest(unittest.TestCase):
 
             class MyListener(object):
                 def add_service(self, zeroconf, type, name):
-                    asyncio.ensure_future(self.async_add_service(zeroconf,type,name))
+                    asyncio.ensure_future(self.async_add_service(zeroconf, type, name))
 
                 async def async_add_service(self, zeroconf, type, name):
                     await zeroconf.get_service_info(type, name)
@@ -618,8 +647,9 @@ class ListenerTest(unittest.TestCase):
             desc.update(properties)
             info_service = ServiceInfo(
                 subtype, registration_name,
-                socket.inet_aton("10.0.1.2"), 80, 0, 0,
-                desc, "ash-2.local.")
+                address=socket.inet_aton("10.0.1.2"), port=80, weight=0, priority=0,
+                address6=socket.inet_pton(socket.AF_INET6, '::1'),
+                properties=desc, server="ash-2.local.")
             await zcregistrar.register_service(info_service)
 
             try:
@@ -654,14 +684,14 @@ class ListenerTest(unittest.TestCase):
                 zcbrowser.remove_service_listener(listener)
                 await zcbrowser.close()
 
-
         event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(event_loop)
-        zeroconf_browser = Zeroconf(event_loop,[netifaces.AF_INET],iface="lo")
-        zeroconf_registrar = Zeroconf(event_loop,[netifaces.AF_INET],iface="lo")
+        zeroconf_browser = Zeroconf(event_loop, [netifaces.AF_INET], iface=LOCALHOST)
+        zeroconf_registrar = Zeroconf(event_loop, [netifaces.AF_INET], iface=LOCALHOST)
         coro = run_me(zeroconf_browser, zeroconf_registrar)
         event_loop.run_until_complete(coro)
         event_loop.close()
+
 
 def test_integration():
     service_added = Event()
@@ -678,15 +708,15 @@ def test_integration():
                 elif state_change is ServiceStateChange.Removed:
                     service_removed.set()
 
-        zeroconf_browser = Zeroconf(loop,[netifaces.AF_INET],iface="lo")
+        zeroconf_browser = Zeroconf(loop, [netifaces.AF_INET], iface=LOCALHOST)
         browser = ServiceBrowser(zeroconf_browser, type_, [on_service_state_change])
 
-        zeroconf_registrar = Zeroconf(loop,[netifaces.AF_INET],iface="lo")
+        zeroconf_registrar = Zeroconf(loop, [netifaces.AF_INET], iface=LOCALHOST)
         desc = {'path': '/~paulsm/'}
         info = ServiceInfo(
             type_, registration_name,
-            socket.inet_aton("10.0.1.2"), 80, 0, 0,
-            desc, "ash-2.local.")
+            address=socket.inet_aton("10.0.1.2"), port=80, weight=0, priority=0,
+            properties=desc, server="ash-2.local.")
         zeroconf_registrar.register_service(info)
 
         try:
