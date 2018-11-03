@@ -1380,6 +1380,17 @@ class ServiceInfo(object):
                 if record.name == self.name:
                     self._set_text(record.text)
 
+    def all_set(self, zc):
+        """
+        Return True if all wanted fields have been retrieved.
+        Only care for an address type if corresponding AF is configured.
+        """
+        return (
+            self.server is not None and self.text is not None and
+            (self.address is not None if socket.AF_INET in zc.protocols else True) and
+            (self.address6 is not None if socket.AF_INET6 in zc.protocols else True)
+        )
+
     async def request(self, zc, timeout):
         """Coroutine: Returns true if the service could be discovered on the
         network, and updates this object with details discovered.
@@ -1401,12 +1412,17 @@ class ServiceInfo(object):
             if cached:
                 self.update_record(zc, now, cached)
 
-        if None not in (self.server, self.address, self.text) or timeout == 0:
+        if self.all_set(zc):
+            # All possible values have been retrieved
             return True
+
+        if timeout == 0:
+            # Timeout is set to zero: only return what was available in cache
+            return False
 
         try:
             zc.add_listener(self, DNSQuestion(self.name, _TYPE_ANY, _CLASS_IN))
-            while None in (self.server, self.address, self.text):
+            while not self.all_set(zc):
                 if last <= now:
                     return False
                 if next_ <= now:
@@ -1424,6 +1440,7 @@ class ServiceInfo(object):
                             self.name, _TYPE_TXT, _CLASS_IN), now)
 
                     if self.server is not None:
+                        # Always ask for both AF; does not cost much!
                         out.add_question(
                             DNSQuestion(self.server, _TYPE_A, _CLASS_IN))
                         out.add_answer_at_time(
