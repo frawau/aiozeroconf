@@ -20,4 +20,4 @@ test_coverage:
 	nosetests -v --with-coverage --cover-package=aiozeroconf
 
 autopep8:
-	autopep8 --max-line-length=$(MAX_LINE_LENGTH) -i examples *.py
+	autopep8 --max-line-length=$(MAX_LINE_LENGTH) -i examples *.py aiozeroconf/aiozeroconf.py aiozeroconf/__main__.py

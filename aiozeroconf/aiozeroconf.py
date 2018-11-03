@@ -1129,10 +1129,14 @@ class MCListener(asyncio.Protocol, QuietLogger):
                 # We don't really care
                 pass
 
+
+    async def sock_handler(self, sock, data, destination):
+        await self.zc.loop.run_in_executor(None, partial(sock.sendto, data, destination))
+
+
     def sendto(self, data, destination):
         for sock in self.senders.values():
-            # @TODO This could block; need to wrap into a datagram endpoint!
-            sock.sendto(data, destination)
+            self.zc.loop.create_task(self.sock_handler(sock,data,destination))
 
 
 class Reaper(object):
@@ -1438,7 +1442,7 @@ class ServiceInfo(object):
                 await asyncio.sleep((min(next_, last) - now) / 1000.0)
                 now = current_time_millis()
         except Exception as e:
-            logging.debug("Request failed: {}".format(e))
+            log.debug("Request failed: {}".format(e))
         finally:
             zc.remove_listener(self)
         return True
