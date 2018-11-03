@@ -563,6 +563,7 @@ class ServiceTypesQuery(unittest.TestCase):
         event_loop.run_until_complete(self.run_me_with_listener(zeroconf_registrar))
         event_loop.close()
 
+    @unittest.skip("Travis-ci: images do not have IPv6")
     def test_integration_with_listener_inet6(self):
         event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(event_loop)
@@ -602,6 +603,7 @@ class ServiceTypesQuery(unittest.TestCase):
         event_loop.run_until_complete(self.run_me_with_subtype(zeroconf_registrar))
         event_loop.close()
 
+    @unittest.skip("Travis-ci: images do not have IPv6")
     def test_integration_with_subtype_and_listener_inet6(self):
         event_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(event_loop)

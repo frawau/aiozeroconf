@@ -1,5 +1,6 @@
 language: python
-dist: osx
+sudo: false
+dist: trusty
 python:
     - "3.5"
     - "3.6"
