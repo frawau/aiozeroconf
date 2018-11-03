@@ -139,6 +139,12 @@ If you don't know the name of the service you need to browse for, try:
 
 See examples directory for more.
 
+You can also run the module with::
+
+    python3 -m aiozeroconf
+
+Try -h for help
+
 Changelog
 =========
 
