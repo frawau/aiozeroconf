@@ -424,6 +424,7 @@ class DNSRecord(DNSEntry):
     @abstractmethod
     def __eq__(self, other):
         """All records must implement this"""
+        raise NotImplementedError
 
     def suppressed_by(self, msg):
         """Returns true if any answer in a message can suffice for the
@@ -464,6 +465,7 @@ class DNSRecord(DNSEntry):
     @abstractmethod
     def write(self, out):
         """Write data out"""
+        raise NotImplementedError
 
     def to_string(self, other):
         """String representation with additional information"""
