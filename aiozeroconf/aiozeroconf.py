@@ -1129,14 +1129,12 @@ class MCListener(asyncio.Protocol, QuietLogger):
                 # We don't really care
                 pass
 
-
     async def sock_handler(self, sock, data, destination):
         await self.zc.loop.run_in_executor(None, partial(sock.sendto, data, destination))
 
-
     def sendto(self, data, destination):
         for sock in self.senders.values():
-            self.zc.loop.create_task(self.sock_handler(sock,data,destination))
+            self.zc.loop.create_task(self.sock_handler(sock, data, destination))
 
 
 class Reaper(object):
