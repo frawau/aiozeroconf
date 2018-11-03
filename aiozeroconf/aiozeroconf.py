@@ -1227,7 +1227,7 @@ class ServiceBrowser(object):
 class ServiceInfo(object):
     """Service information"""
 
-    def __init__(self, type_, name, address=None, address6=None, port=None, weight=0,
+    def __init__(self, type_, name, *, address=None, address6=None, port=None, weight=0,
                  priority=0, properties=None, server=None):
         """Create a service description.
 
