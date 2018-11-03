@@ -1077,6 +1077,10 @@ class MCListener(asyncio.Protocol, QuietLogger):
         self.zc = zc
         self.af = af
         self.senders = senders
+        self.transport = None
+
+    def connection_made(self, transport):
+        self.transport = transport
 
     def datagram_received(self, data, addrs):
         try:
@@ -1085,7 +1089,7 @@ class MCListener(asyncio.Protocol, QuietLogger):
                 addr, port = addrs
             else:
                 addr, port, flow, scope = addrs
-        except Exception:
+        except AssertionError:
             self.log_exception_warning()
             return
 
@@ -1111,9 +1115,21 @@ class MCListener(asyncio.Protocol, QuietLogger):
         else:
             self.zc.handle_response(msg)
 
+    def close(self):
+        if self.transport:
+            self.transport.close()
+
+        for sock in self.senders.values():
+            try:
+                sock.close()
+            except socket.error:
+                # We don't really care
+                pass
+
     def sendto(self, data, destination):
-        for socket in self.senders.values():
-            socket.sendto(data, destination)
+        for sock in self.senders.values():
+            # @TODO This could block; need to wrap into a datagram endpoint!
+            sock.sendto(data, destination)
 
 
 class Reaper(object):
@@ -1689,7 +1705,7 @@ class Zeroconf(QuietLogger):
 
         self.interfaces = normalize_interface_choice(iface)
 
-        self.loop.create_task(self.initialize(address_family))
+        self._init = self.loop.create_task(self.initialize(address_family))
         self.listeners = []
         self.browsers = {}
         self.services = {}
@@ -1718,15 +1734,29 @@ class Zeroconf(QuietLogger):
                     listener, senders = setup_inet6(self.interfaces)
                 else:
                     raise ValueError('Only IPv4 and IPv6 are supported')
+            except Exception as e:
+                log.error('initializing comm af %s on interfaces %s: %s', af, self.interfaces, e)
+                continue
 
-                if listener:
+            if listener:
+                try:
                     _, protocol = await self.loop.create_datagram_endpoint(
                         partial(MCListener, self, af, senders),
                         sock=listener,
                     )
                     self.protocols[af] = protocol
-            except Exception as e:
-                log.error('initializing comm af %s on interfaces %s: %s', af, self.interfaces, e)
+                except asyncio.CancelledError:
+                    # Task was cancelled while we were creating endpoint...
+                    try:
+                        listener.close()
+                    except socket.error:
+                        pass
+                    for sender in senders.values():
+                        try:
+                            sender.close()
+                        except socket.error:
+                            pass
+                    raise
 
     async def get_service_info(self, type_, name, timeout=3000):
         """Returns network's service information for a particular
@@ -1925,11 +1955,10 @@ class Zeroconf(QuietLogger):
 
     def remove_listener(self, listener):
         """Removes a listener."""
-        try:
+        if listener in self.listeners:
             self.listeners.remove(listener)
-
-        except Exception as e:  # TODO stop catching all Exceptions
-            log.exception('Unknown error, possibly benign: %r', e)
+        else:
+            log.warning('cannot remove listener %s: not found', listener)
 
     def update_record(self, now, rec):
         """Used to notify listeners of new information that has updated
@@ -2043,7 +2072,7 @@ class Zeroconf(QuietLogger):
                     proto.sendto(packet, (addr or _MDNS_ADDR, port or _MDNS_PORT))
                 else:
                     proto.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT))
-            except Exception:  # TODO stop catching all Exceptions
+            except socket.error:
                 # on send errors, log the exception and keep going
                 self.log_exception_warning()
 
@@ -2058,9 +2087,13 @@ class Zeroconf(QuietLogger):
 
             # shutdown recv socket and thread
             for proto in self.protocols.values():
+                proto.close()
+
+            if not self._init.done():
+                self._init.cancel()
                 try:
-                    proto.transport.close()
-                except:
+                    await self._init
+                except asyncio.CancelledError:
                     pass
 
             # shutdown the rest
