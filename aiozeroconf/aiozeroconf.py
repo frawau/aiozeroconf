@@ -1085,7 +1085,7 @@ class MCListener(asyncio.Protocol, QuietLogger):
                 addr, port = addrs
             else:
                 addr, port, flow, scope = addrs
-        except Exception:
+        except AssertionError:
             self.log_exception_warning()
             return
 
@@ -1925,11 +1925,10 @@ class Zeroconf(QuietLogger):
 
     def remove_listener(self, listener):
         """Removes a listener."""
-        try:
+        if listener in self.listeners:
             self.listeners.remove(listener)
-
-        except Exception as e:  # TODO stop catching all Exceptions
-            log.exception('Unknown error, possibly benign: %r', e)
+        else:
+            log.warning('cannot remove listener %s: not found', listener)
 
     def update_record(self, now, rec):
         """Used to notify listeners of new information that has updated
@@ -2043,7 +2042,7 @@ class Zeroconf(QuietLogger):
                     proto.sendto(packet, (addr or _MDNS_ADDR, port or _MDNS_PORT))
                 else:
                     proto.sendto(packet, (addr or _MDNS6_ADDR, port or _MDNS_PORT))
-            except Exception:  # TODO stop catching all Exceptions
+            except socket.error:
                 # on send errors, log the exception and keep going
                 self.log_exception_warning()
 
