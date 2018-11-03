@@ -424,6 +424,7 @@ class DNSRecord(DNSEntry):
     @abstractmethod
     def __eq__(self, other):
         """All records must implement this"""
+        raise NotImplementedError
 
     def suppressed_by(self, msg):
         """Returns true if any answer in a message can suffice for the
@@ -464,6 +465,7 @@ class DNSRecord(DNSEntry):
     @abstractmethod
     def write(self, out):
         """Write data out"""
+        raise NotImplementedError
 
     def to_string(self, other):
         """String representation with additional information"""
@@ -1070,9 +1072,10 @@ class MCListener(asyncio.Protocol, QuietLogger):
     group to which DNS messages are sent, allowing the implementation
     to cache information as it arrives."""
 
-    def __init__(self, zc, senders):
+    def __init__(self, zc, af, senders):
         asyncio.Protocol.__init__(self)
         self.zc = zc
+        self.af = af
         self.senders = senders
 
     def datagram_received(self, data, addrs):
@@ -1093,15 +1096,17 @@ class MCListener(asyncio.Protocol, QuietLogger):
             return
 
         if msg.is_query():
+            resp_addr = _MDNS_ADDR if self.af == socket.AF_INET else _MDNS6_ADDR
+
             # Always multicast responses
             if port == _MDNS_PORT:
-                self.zc.handle_query(msg, _MDNS_ADDR, _MDNS_PORT)
+                self.zc.handle_query(msg, resp_addr, _MDNS_PORT)
 
             # If it's not a multicast query, reply via unicast
             # and multicast
             elif port == _DNS_PORT:
                 self.zc.handle_query(msg, addr, port)
-                self.zc.handle_query(msg, _MDNS_ADDR, _MDNS_PORT)
+                self.zc.handle_query(msg, resp_addr, _MDNS_PORT)
 
         else:
             self.zc.handle_response(msg)
@@ -1222,7 +1227,7 @@ class ServiceBrowser(object):
 class ServiceInfo(object):
     """Service information"""
 
-    def __init__(self, type_, name, address=None, address6=None, port=None, weight=0,
+    def __init__(self, type_, name, *, address=None, address6=None, port=None, weight=0,
                  priority=0, properties=None, server=None):
         """Create a service description.
 
@@ -1627,7 +1632,7 @@ def setup_inet6(interfaces: List[str]):
             indexes.append((interface, idx))
 
     if not indexes:
-        raise ValueError('No interface for IPv4')
+        raise ValueError('No interface for IPv6')
 
     addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
     group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
@@ -1716,7 +1721,7 @@ class Zeroconf(QuietLogger):
 
                 if listener:
                     _, protocol = await self.loop.create_datagram_endpoint(
-                        partial(MCListener, self, senders),
+                        partial(MCListener, self, af, senders),
                         sock=listener,
                     )
                     self.protocols[af] = protocol
