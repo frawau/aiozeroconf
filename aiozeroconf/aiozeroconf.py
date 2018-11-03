@@ -1072,9 +1072,10 @@ class MCListener(asyncio.Protocol, QuietLogger):
     group to which DNS messages are sent, allowing the implementation
     to cache information as it arrives."""
 
-    def __init__(self, zc, senders):
+    def __init__(self, zc, af, senders):
         asyncio.Protocol.__init__(self)
         self.zc = zc
+        self.af = af
         self.senders = senders
 
     def datagram_received(self, data, addrs):
@@ -1095,15 +1096,17 @@ class MCListener(asyncio.Protocol, QuietLogger):
             return
 
         if msg.is_query():
+            resp_addr = _MDNS_ADDR if self.af == socket.AF_INET else _MDNS6_ADDR
+
             # Always multicast responses
             if port == _MDNS_PORT:
-                self.zc.handle_query(msg, _MDNS_ADDR, _MDNS_PORT)
+                self.zc.handle_query(msg, resp_addr, _MDNS_PORT)
 
             # If it's not a multicast query, reply via unicast
             # and multicast
             elif port == _DNS_PORT:
                 self.zc.handle_query(msg, addr, port)
-                self.zc.handle_query(msg, _MDNS_ADDR, _MDNS_PORT)
+                self.zc.handle_query(msg, resp_addr, _MDNS_PORT)
 
         else:
             self.zc.handle_response(msg)
@@ -1718,7 +1721,7 @@ class Zeroconf(QuietLogger):
 
                 if listener:
                     _, protocol = await self.loop.create_datagram_endpoint(
-                        partial(MCListener, self, senders),
+                        partial(MCListener, self, af, senders),
                         sock=listener,
                     )
                     self.protocols[af] = protocol
