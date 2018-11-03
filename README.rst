@@ -1,8 +1,8 @@
 python-aiozeroconf
 ===============
 
-.. image:: https://travis-ci.com/frawau/aiozeroconf.svg?branch=master
-    :target: https://travis-ci.com/frawau/aiozeroconf
+.. image:: https://travis-ci.org/frawau/aiozeroconf.svg?branch=master
+    :target: https://travis-ci.org/frawau/aiozeroconf
 
 
 This is port of  pyzeroconf to asyncio. It is based on pyzeroconf,
