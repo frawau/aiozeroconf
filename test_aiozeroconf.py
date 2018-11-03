@@ -319,7 +319,7 @@ class Names(unittest.TestCase):
             assert mocked_log_debug.call_count > call_counts[0]
 
             # close our zeroconf which will close the sockets
-            zc.close()
+            await zc.close()
 
             # pop the big chunk off the end of the data and send on a closed socket
             out.data.pop()
