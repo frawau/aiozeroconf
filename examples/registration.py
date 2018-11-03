@@ -24,13 +24,13 @@
 
 """ Example of announcing a service (in this case, a fake HTTP server) """
 
+import asyncio
 import logging
 import socket
 import sys
-import asyncio
-from functools import partial
 
 from aiozeroconf import ServiceInfo, Zeroconf
+
 
 async def run_test(zc):
     global info, desc
@@ -42,6 +42,7 @@ async def run_test(zc):
                        desc, "ash-2.local.")
     print("Registration of a service, press Ctrl-C to exit...")
     await zc.register_service(info)
+
 
 async def do_close(zc):
     global info
@@ -59,11 +60,11 @@ if __name__ == '__main__':
 
 desc = {'path': '/~paulsm/'}
 info = ServiceInfo("_http._tcp.local.",
-                    "Paul's Test Web Site._http._tcp.local.",
-                    socket.inet_aton("127.0.0.1"), 80, 0, 0,
-                    desc, "ash-2.local.")
+                   "Paul's Test Web Site._http._tcp.local.",
+                   socket.inet_aton("127.0.0.1"), 80, 0, 0,
+                   desc, "ash-2.local.")
 zc = Zeroconf(loop)
-xx=loop.create_task(run_test(zc))
+xx = loop.create_task(run_test(zc))
 try:
     loop.run_forever()
 except KeyboardInterrupt:

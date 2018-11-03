@@ -22,12 +22,13 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
+import asyncio
 import logging
 import socket
 import sys
-import asyncio
 
-from aiozeroconf import __version__, ServiceInfo, Zeroconf
+from aiozeroconf import ServiceInfo, Zeroconf, __version__
+
 
 async def test_run(r):
     print("1. Testing registration of a service...")
@@ -51,6 +52,7 @@ async def test_run(r):
     await r.unregister_service(info)
     print("   Unregister done.")
     await r.close()
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

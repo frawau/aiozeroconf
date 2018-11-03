@@ -4,16 +4,15 @@
 
 """ Unit tests for zeroconf.py """
 
+
+import asyncio
 import logging
 import socket
 import struct
 import time
 import unittest
-import asyncio
-import netifaces
-from threading import Event
 
-from six import indexbytes
+from threading import Event
 
 import aiozeroconf.aiozeroconf as r
 from aiozeroconf.aiozeroconf import (
@@ -25,6 +24,11 @@ from aiozeroconf.aiozeroconf import (
     Zeroconf,
     ZeroconfServiceTypes,
 )
+
+import netifaces
+
+from six import indexbytes
+
 
 log = logging.getLogger('zeroconf')
 original_logging_level = [None]
@@ -168,12 +172,12 @@ class PacketForm(unittest.TestCase):
     def test_numbers(self):
         generated = r.DNSOutgoing(r._FLAGS_QR_RESPONSE)
         bytes = generated.packet()
-        (numQuestions, numAnswers, numAuthorities,
-         numAdditionals) = struct.unpack('!4H', bytes[4:12])
-        self.assertEqual(numQuestions, 0)
-        self.assertEqual(numAnswers, 0)
-        self.assertEqual(numAuthorities, 0)
-        self.assertEqual(numAdditionals, 0)
+        (num_questions, num_answers, num_authorities,
+         num_additionals) = struct.unpack('!4H', bytes[4:12])
+        self.assertEqual(num_questions, 0)
+        self.assertEqual(num_answers, 0)
+        self.assertEqual(num_authorities, 0)
+        self.assertEqual(num_additionals, 0)
 
     def test_numbers_questions(self):
         generated = r.DNSOutgoing(r._FLAGS_QR_RESPONSE)
@@ -181,12 +185,12 @@ class PacketForm(unittest.TestCase):
         for i in range(10):
             generated.add_question(question)
         bytes = generated.packet()
-        (numQuestions, numAnswers, numAuthorities,
-         numAdditionals) = struct.unpack('!4H', bytes[4:12])
-        self.assertEqual(numQuestions, 10)
-        self.assertEqual(numAnswers, 0)
-        self.assertEqual(numAuthorities, 0)
-        self.assertEqual(numAdditionals, 0)
+        (num_questions, num_answers, num_authorities,
+         num_additionals) = struct.unpack('!4H', bytes[4:12])
+        self.assertEqual(num_questions, 10)
+        self.assertEqual(num_answers, 0)
+        self.assertEqual(num_authorities, 0)
+        self.assertEqual(num_additionals, 0)
 
 
 class Names(unittest.TestCase):
@@ -270,7 +274,7 @@ class Names(unittest.TestCase):
             await asyncio.sleep(0.5)
 
             r.log.debug('sleep_count %d, sized %d',
-                               sleep_count, longest_packet[0])
+                        sleep_count, longest_packet[0])
 
             # now the browser has sent at least one request, verify the size
             assert longest_packet[0] <= r._MAX_MSG_ABSOLUTE
@@ -309,9 +313,9 @@ class Names(unittest.TestCase):
             s.sendto(packet, 0, (r._MDNS_ADDR, r._MDNS_PORT))
             await asyncio.sleep(2.0)
             r.log.debug('warn %d debug %d was %s',
-                               mocked_log_warn.call_count,
-                               mocked_log_debug.call_count,
-                               call_counts)
+                        mocked_log_warn.call_count,
+                        mocked_log_debug.call_count,
+                        call_counts)
             assert mocked_log_debug.call_count > call_counts[0]
 
             # close our zeroconf which will close the sockets
@@ -326,16 +330,16 @@ class Names(unittest.TestCase):
             # send on a closed socket (force a socket error)
             zc.send(out)
             r.log.debug('warn %d debug %d was %s',
-                               mocked_log_warn.call_count,
-                               mocked_log_debug.call_count,
-                               call_counts)
+                        mocked_log_warn.call_count,
+                        mocked_log_debug.call_count,
+                        call_counts)
             assert mocked_log_warn.call_count > call_counts[0]
             assert mocked_log_debug.call_count > call_counts[0]
             zc.send(out)
             r.log.debug('warn %d debug %d was %s',
-                               mocked_log_warn.call_count,
-                               mocked_log_debug.call_count,
-                               call_counts)
+                        mocked_log_warn.call_count,
+                        mocked_log_debug.call_count,
+                        call_counts)
             assert mocked_log_debug.call_count > call_counts[0] + 2
 
             mocked_log_warn.stop()
@@ -370,7 +374,7 @@ class Names(unittest.TestCase):
                 sleep_count = 0
                 while sleep_count < 40 and \
                         i * records_per_server > len(
-                    zc.cache.entries_with_name(type_)):
+                            zc.cache.entries_with_name(type_)):
                     sleep_count += 1
                     time.sleep(0.05)
 

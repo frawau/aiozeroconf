@@ -36,9 +36,10 @@ def on_service_state_change(zc, service_type, name, state_change):
     print("Service %s of type %s state changed: %s" % (name, service_type, state_change))
 
     if state_change is ServiceStateChange.Added:
-        asyncio.ensure_future(on_service_state_change_process(zc,service_type,name))
+        asyncio.ensure_future(on_service_state_change_process(zc, service_type, name))
 
-async def on_service_state_change_process(zc,service_type, name):
+
+async def on_service_state_change_process(zc, service_type, name):
     info = await zc.get_service_info(service_type, name)
     if info:
         print("  Address: %s:%d" % (socket.inet_ntoa(info.address), info.port))
@@ -54,8 +55,10 @@ async def on_service_state_change_process(zc,service_type, name):
         print("  No info")
     print('\n')
 
+
 async def do_close(zc):
     await zc.close()
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.CRITICAL)
@@ -66,7 +69,7 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    zc=Zeroconf(loop)
+    zc = Zeroconf(loop)
     print("\nBrowsing services, press Ctrl-C to exit...\n")
     browser = ServiceBrowser(zc, "_http._tcp.local.", handlers=[on_service_state_change])
     try:
