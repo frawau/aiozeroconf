@@ -22,14 +22,15 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
+
+import argparse
 import asyncio
 import logging
 import socket
-import sys
-import argparse
-import netifaces
 
 from aiozeroconf import ServiceBrowser, ServiceStateChange, Zeroconf, ZeroconfServiceTypes
+
+import netifaces
 
 
 def on_service_state_change(zc, service_type, name, state_change):

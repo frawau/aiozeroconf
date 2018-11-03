@@ -40,6 +40,8 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
 # USA
 
+
+import asyncio
 import enum
 import errno
 import logging
@@ -47,12 +49,13 @@ import re
 import socket
 import struct
 import sys
-import asyncio
 import time
+
 from abc import abstractmethod
-from functools import reduce, partial
+from functools import partial, reduce
 
 import netifaces
+
 from typing import List, Union
 
 __author__ = 'François Wautier'
@@ -1434,8 +1437,8 @@ class ServiceInfo(object):
                     delay *= 2
                 await asyncio.sleep((min(next_, last) - now) / 1000.0)
                 now = current_time_millis()
-        except:
-            pass
+        except Exception as e:
+            logging.debug("Request failed: {}".format(e))
         finally:
             zc.remove_listener(self)
         return True
