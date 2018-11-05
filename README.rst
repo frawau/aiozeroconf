@@ -37,6 +37,7 @@ Python compatibility
 --------------------
 
 * CPython 3.5+
+* Pypy 3.5
 
 Versioning
 ----------
@@ -55,15 +56,15 @@ It is the very beginning. I plan to use this in a project.
 Compare to the original package, a number of method have become coroutines.
 
 
-How to get python-zeroconf?
+How to get aiozeroconf?
 ===========================
 
-* PyPI page https://pypi.python.org/pypi/zeroconf
-* GitHub project https://github.com/jstasiak/python-zeroconf
+* PyPI page https://pypi.python.org/pypi/aiozeroconf
+* GitHub project https://github.com/frawau/aiozeroconf
 
-The easiest way to install python-zeroconf is using pip::
+The easiest way to install aiozeroconf is using pip::
 
-    pip3 install zeroconf
+    pip3 install aiozeroconf
 
 
 
@@ -141,6 +142,14 @@ Try -h for help
 
 Changelog
 =========
+0.1.6
+----
+
+* Correctly handle multiple interfaces.
+* All unit test running
+* Travis-ci works but IPv6 unit tests had to be disabled
+* When running the module, -f will list available services.
+* ...
 
 0.1.0
 ----
