@@ -66,6 +66,18 @@ async def list_service(zc):
     print("Services:\n{}".format('\n'.join(['\t{}'.format(s) for s in los])))
 
 
+def guess(service):
+    """
+    Attempt guessing and completing service name.
+    Most services are on _tcp, and even more on local domain!
+    """
+    if '.' not in service:
+        return service + '._tcp.local.'
+    elif service.endswith('._tcp') or service.endswith('._udp'):
+        return service + '.local.'
+    return service
+
+
 async def do_close(zc):
     await zc.close()
 
@@ -106,7 +118,7 @@ try:
     if opts.find:
         loop.run_until_complete(list_service(zc))
     else:
-        browser = ServiceBrowser(zc, opts.service, handlers=[on_service_state_change])
+        browser = ServiceBrowser(zc, guess(opts.service), handlers=[on_service_state_change])
         loop.run_forever()
 except KeyboardInterrupt:
     print("Unregistering...")
