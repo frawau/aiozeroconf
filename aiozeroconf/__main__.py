@@ -73,7 +73,7 @@ def guess(service):
     """
     if '.' not in service:
         return service + '._tcp.local.'
-    elif service.endswith('._tcp') or service.endswith('._udp'):
+    elif service.endswith(('._tcp', '._udp')):
         return service + '.local.'
     return service
 
