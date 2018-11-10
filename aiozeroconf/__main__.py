@@ -119,7 +119,7 @@ def main():
         if opts.find:
             loop.run_until_complete(list_service(zc))
         else:
-            browser = ServiceBrowser(zc, guess(opts.service), handlers=[on_service_state_change])
+            ServiceBrowser(zc, guess(opts.service), handlers=[on_service_state_change])
             loop.run_forever()
     except KeyboardInterrupt:
         print("Unregistering...")
