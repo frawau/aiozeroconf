@@ -136,7 +136,11 @@ See examples directory for more.
 
 You can also run the module with::
 
-    python3 -m aiozeroconf
+    python3 -m aiozeroconf -h
+
+or directly::
+
+    aiozeroconf -h
 
 Try -h for help
 

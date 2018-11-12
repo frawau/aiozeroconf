@@ -37,4 +37,9 @@ setup(name='aiozeroconf',
       install_requires=[
           'netifaces',
       ],
+      entry_points={
+          'console_scripts': [
+              'aiozeroconf=aiozeroconf.__main__:main'
+          ],
+      },
       )

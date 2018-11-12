@@ -66,50 +66,67 @@ async def list_service(zc):
     print("Services:\n{}".format('\n'.join(['\t{}'.format(s) for s in los])))
 
 
+def guess(service):
+    """
+    Attempt guessing and completing service name.
+    Most services are on _tcp, and even more on local domain!
+    """
+    if '.' not in service:
+        return service + '._tcp.local.'
+    elif service.endswith(('._tcp', '._udp')):
+        return service + '.local.'
+    return service
+
+
 async def do_close(zc):
     await zc.close()
 
 
-parser = argparse.ArgumentParser(description="Track and interact with Lifx light bulbs.")
-parser.add_argument('-i', "--iface", default="",
-                    help="Name of the inteface to use.")
-parser.add_argument('-p', "--protocol", choices=['ipv4', 'ipv6', 'both'], default="ipv4",
-                    help="What IP protocol to use.")
-parser.add_argument("-s", "--service", default="_http._tcp.local.",
-                    help="The service to browse.")
-parser.add_argument("-f", "--find", action='store_true', default=False,
-                    help="Find services")
-parser.add_argument("-d", "--debug", action='store_true', default=False,
-                    help="Set debug mode.")
-try:
-    opts = parser.parse_args()
-except Exception as e:
-    parser.error("Error: " + str(e))
+def main():
+    parser = argparse.ArgumentParser(description="Zeroconf service discovery tool")
+    parser.add_argument('-i', "--iface", default="",
+                        help="Name of the inteface to use.")
+    parser.add_argument('-p', "--protocol", choices=['ipv4', 'ipv6', 'both'], default="ipv4",
+                        help="What IP protocol to use.")
+    parser.add_argument("-s", "--service", default="_http._tcp.local.",
+                        help="The service to browse.")
+    parser.add_argument("-f", "--find", action='store_true', default=False,
+                        help="Find services")
+    parser.add_argument("-d", "--debug", action='store_true', default=False,
+                        help="Set debug mode.")
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
 
-if opts.protocol == "ipv4":
-    proto = [netifaces.AF_INET]
-elif opts.protocol == "ipv6":
-    proto = [netifaces.AF_INET6]
-else:
-    proto = [netifaces.AF_INET, netifaces.AF_INET6]
-
-loop = asyncio.get_event_loop()
-logging.basicConfig(level=logging.CRITICAL)
-if opts.debug:
-    logging.getLogger('zeroconf').setLevel(logging.DEBUG)
-    loop.set_debug(True)
-
-zc = Zeroconf(loop, proto, iface=opts.iface)
-print("\nBrowsing services, press Ctrl-C to exit...\n")
-
-try:
-    if opts.find:
-        loop.run_until_complete(list_service(zc))
+    if opts.protocol == "ipv4":
+        proto = [netifaces.AF_INET]
+    elif opts.protocol == "ipv6":
+        proto = [netifaces.AF_INET6]
     else:
-        browser = ServiceBrowser(zc, opts.service, handlers=[on_service_state_change])
-        loop.run_forever()
-except KeyboardInterrupt:
-    print("Unregistering...")
-    loop.run_until_complete(do_close(zc))
-finally:
-    loop.close()
+        proto = [netifaces.AF_INET, netifaces.AF_INET6]
+
+    loop = asyncio.get_event_loop()
+    logging.basicConfig(level=logging.CRITICAL)
+    if opts.debug:
+        logging.getLogger('zeroconf').setLevel(logging.DEBUG)
+        loop.set_debug(True)
+
+    zc = Zeroconf(loop, proto, iface=opts.iface)
+    print("\nBrowsing services, press Ctrl-C to exit...\n")
+
+    try:
+        if opts.find:
+            loop.run_until_complete(list_service(zc))
+        else:
+            ServiceBrowser(zc, guess(opts.service), handlers=[on_service_state_change])
+            loop.run_forever()
+    except KeyboardInterrupt:
+        print("Unregistering...")
+        loop.run_until_complete(do_close(zc))
+    finally:
+        loop.close()
+
+
+if __name__ == '__main__':
+    main()
