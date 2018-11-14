@@ -1076,6 +1076,11 @@ class MCListener(asyncio.Protocol, QuietLogger):
     to cache information as it arrives."""
 
     def __init__(self, zc, af, senders):
+        """
+        :param zc: Zeroconf instance
+        :param af: address familly
+        :param senders: list of sending socket transports
+        """
         asyncio.Protocol.__init__(self)
         self.zc = zc
         self.af = af
@@ -1122,19 +1127,12 @@ class MCListener(asyncio.Protocol, QuietLogger):
         if self.transport:
             self.transport.close()
 
-        for sock in self.senders.values():
-            try:
-                sock.close()
-            except socket.error:
-                # We don't really care
-                pass
-
-    async def sock_handler(self, sock, data, destination):
-        await self.zc.loop.run_in_executor(None, partial(sock.sendto, data, destination))
+        for sender in self.senders:
+            sender.close()
 
     def sendto(self, data, destination):
-        for sock in self.senders.values():
-            self.zc.loop.create_task(self.sock_handler(sock, data, destination))
+        for sender in self.senders:
+            sender.sendto(data, destination)
 
 
 class Reaper(object):
@@ -1578,9 +1576,6 @@ def setup_inet(interfaces: List[str]):
     # Create listening socket
     listener = new_inet_socket()
 
-    # List of sender sockets
-    senders = {}
-
     addresses = []
     for interface in interfaces:
         addr_list = netifaces.ifaddresses(interface)
@@ -1593,6 +1588,8 @@ def setup_inet(interfaces: List[str]):
     addrinfo = socket.getaddrinfo(_MDNS_ADDR, None)[0]
     group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
 
+    # List of sender sockets
+    senders = []
     for interface, addr in addresses:
         bind_addr = socket.inet_aton(addr)
         try:
@@ -1613,7 +1610,7 @@ def setup_inet(interfaces: List[str]):
 
         sender = new_inet_socket()
         sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, bind_addr)
-        senders[interface] = sender
+        senders.append(sender)
 
     return listener, senders
 
@@ -1658,9 +1655,6 @@ def setup_inet6(interfaces: List[str]):
     # Create listening socket
     listener = new_inet6_socket()
 
-    # List of sender sockets
-    senders = {}
-
     indexes = []
     for interface in interfaces:
         addr_list = netifaces.ifaddresses(interface)
@@ -1675,6 +1669,8 @@ def setup_inet6(interfaces: List[str]):
     addrinfo = socket.getaddrinfo(_MDNS6_ADDR, None)[0]
     group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
 
+    # List of sender sockets
+    senders = []
     for interface, idx in indexes:
         bind_idx = struct.pack('@I', idx)
         try:
@@ -1695,7 +1691,7 @@ def setup_inet6(interfaces: List[str]):
 
         sender = new_inet6_socket()
         sender.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, bind_idx)
-        senders[interface] = sender
+        senders.append(sender)
 
     return listener, senders
 
@@ -1762,8 +1758,18 @@ class Zeroconf(QuietLogger):
 
             if listener:
                 try:
+                    # Create an asyncio datagram transport for each sender (avoid blocking)
+                    sender_protocols = []
+                    for sender in senders:
+                        transport, _ = await self.loop.create_datagram_endpoint(
+                            asyncio.DatagramProtocol,
+                            sock=sender,
+                        )
+                        sender_protocols.append(transport)
+
+                    # Create an asyncio datagram protocol for receiving data
                     _, protocol = await self.loop.create_datagram_endpoint(
-                        partial(MCListener, self, af, senders),
+                        partial(MCListener, self, af, sender_protocols),
                         sock=listener,
                     )
                     self.protocols[af] = protocol
@@ -1773,7 +1779,7 @@ class Zeroconf(QuietLogger):
                         listener.close()
                     except socket.error:
                         pass
-                    for sender in senders.values():
+                    for sender in senders:
                         try:
                             sender.close()
                         except socket.error:

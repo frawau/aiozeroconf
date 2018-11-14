@@ -53,7 +53,7 @@ async def on_service_state_change_process(zc, service_type, name):
         if info.properties:
             print("  Properties are:")
             for key, value in info.properties.items():
-                print("    %s: %s" % (key, value))
+                print("    %s: %s" % (key.decode(), value.decode()))
         else:
             print("  No properties")
     else:
