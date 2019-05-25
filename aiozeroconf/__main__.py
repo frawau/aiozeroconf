@@ -44,10 +44,12 @@ async def on_service_state_change_process(zc, service_type, name):
     info = await zc.get_service_info(service_type, name)
     print("Service %s of type %s state changed: %s" % (name, service_type, ServiceStateChange.Added))
     if info:
-        if info.address:
-            print("  IPv4 Address: %s:%d" % (socket.inet_ntoa(info.address), info.port))
-        if info.address6:
-            print("  IPv6 Address: %s:%d" % (socket.inet_ntop(netifaces.AF_INET6, info.address6), info.port))
+        if info.addresses:
+            for address in info.addresses:
+                print("  IPv4 Address: %s:%d" % (socket.inet_ntoa(address), info.port))
+        if info.addresses6:
+            for address in info.addresses6:
+                print("  IPv6 Address: %s:%d" % (socket.inet_ntop(netifaces.AF_INET6, address), info.port))
         print("  Weight: %d, priority: %d" % (info.weight, info.priority))
         print("  Server: %s" % (info.server,))
         if info.properties:
@@ -90,8 +92,8 @@ def main():
                         help="What IP protocol to use.")
     parser.add_argument("-s", "--service", default="_http._tcp.local.",
                         help="The service to browse.")
-    parser.add_argument("-f", "--find", action='store_true', default=False,
-                        help="Find services")
+    parser.add_argument("-l", "--list", action='store_true', default=False,
+                        help="List services on the network.")
     parser.add_argument("-d", "--debug", action='store_true', default=False,
                         help="Set debug mode.")
     try:
@@ -109,14 +111,14 @@ def main():
     loop = asyncio.get_event_loop()
     logging.basicConfig(level=logging.CRITICAL)
     if opts.debug:
-        logging.getLogger('zeroconf').setLevel(logging.DEBUG)
+        logging.getLogger('aiozeroconf.aiozeroconf').setLevel(logging.DEBUG)
         loop.set_debug(True)
 
     zc = Zeroconf(loop, proto, iface=opts.iface)
     print("\nBrowsing services, press Ctrl-C to exit...\n")
 
     try:
-        if opts.find:
+        if opts.list:
             loop.run_until_complete(list_service(zc))
         else:
             ServiceBrowser(zc, guess(opts.service), handlers=[on_service_state_change])

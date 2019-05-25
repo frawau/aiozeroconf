@@ -1188,7 +1188,6 @@ class ServiceBrowser(object):
         """Callback invoked by Zeroconf when new information arrives.
 
         Updates information required by browser in the Zeroconf cache."""
-
         if record.type == _TYPE_PTR and record.name == self.type:
             expired = record.is_expired(now)
             service_key = record.alias.lower()
@@ -1246,7 +1245,7 @@ class ServiceBrowser(object):
 class ServiceInfo(object):
     """Service information"""
 
-    def __init__(self, type_, name, *, address=None, address6=None, port=None, weight=0,
+    def __init__(self, type_, name, *, address=[], address6=[], port=None, weight=0,
                  priority=0, properties=None, server=None):
         """Create a service description.
 
@@ -1265,8 +1264,15 @@ class ServiceInfo(object):
             raise BadTypeInNameException
         self.type = type_
         self.name = name
-        self.address = address
-        self.address6 = address6
+
+        if isinstance(address,list):
+            self.addresses = address
+        else:
+            self.addresses = [ address ]
+        if isinstance(address6,list):
+            self.addresses6 = address6
+        else:
+            self.addresses6 = [ address6 ]
         self.port = port
         self.weight = weight
         self.priority = priority
@@ -1356,11 +1362,13 @@ class ServiceInfo(object):
             if record.type == _TYPE_A:
                 # if record.name == self.name:
                 if record.name == self.server:
-                    self.address = record.address
+                    if record.address not in self.addresses:
+                        self.addresses.append(record.address)
             elif record.type == _TYPE_AAAA:
                 # if record.name == self.name:
                 if record.name == self.server:
-                    self.address6 = record.address
+                    if record.address not in self.addresses6:
+                        self.addresses6.append(record.address)
             elif record.type == _TYPE_SRV:
                 if record.name == self.name:
                     self.server = record.server
@@ -1385,8 +1393,8 @@ class ServiceInfo(object):
         """
         return (
             self.server is not None and self.text is not None and
-            (self.address is not None if socket.AF_INET in zc.protocols else True) and
-            (self.address6 is not None if socket.AF_INET6 in zc.protocols else True)
+            (self.addresses != [] if socket.AF_INET in zc.protocols else True) and
+            (self.addresses6 != [] if socket.AF_INET6 in zc.protocols else True)
         )
 
     async def request(self, zc, timeout):
@@ -1475,7 +1483,7 @@ class ServiceInfo(object):
             ', '.join(
                 '%s=%r' % (name, getattr(self, name))
                 for name in (
-                    'type', 'name', 'address', 'port', 'weight', 'priority',
+                    'type', 'name', 'addresses', 'addresses6', 'port', 'weight', 'priority',
                     'server', 'properties',
                 )
             )
@@ -1723,6 +1731,7 @@ class Zeroconf(QuietLogger):
 
         self.interfaces = normalize_interface_choice(iface)
 
+        self.address_family = address_family
         self._init = self.loop.create_task(self.initialize(address_family))
         self.listeners = []
         self.browsers = {}
@@ -1790,7 +1799,7 @@ class Zeroconf(QuietLogger):
         """Returns network's service information for a particular
         name and type, or None if no service matches by the timeout,
         which defaults to 3 seconds."""
-        info = ServiceInfo(type_, name)
+        info = ServiceInfo(type_, name, address=[], address6=[])
         await info.request(self, timeout)
         return info
 
@@ -1819,6 +1828,30 @@ class Zeroconf(QuietLogger):
         changed if needed to make it unique on the network."""
         await self.check_service(info, allow_name_change)
         self.services[info.name.lower()] = info
+
+        #If a service has no address associated with itself, add them all_set
+        if info.addresses == [] and info.addresses6 == []:
+            for iface in self.interfaces:
+                addr_list = netifaces.ifaddresses(iface)
+                if netifaces.AF_INET in self.address_family and netifaces.AF_INET in addr_list:
+                    for addr in addr_list[netifaces.AF_INET]:
+                        try:
+                            thisaddr = socket.inet_pton(netifaces.AF_INET,addr["addr"])
+                        except:
+                            pass
+                        else:
+                            if thisaddr not in info.addresses:
+                                info.addresses.append(thisaddr)
+                if netifaces.AF_INET6 in self.address_family and netifaces.AF_INET6 in addr_list:
+                    for addr in addr_list[netifaces.AF_INET6]:
+                        try:
+                            thisaddr = socket.inet_pton(netifaces.AF_INET6,addr["addr"])
+                        except:
+                            pass
+                        else:
+                            if thisaddr not in info.addresses6:
+                                info.addresses6.append(thisaddr)
+
         if info.type in self.servicetypes:
             self.servicetypes[info.type] += 1
         else:
@@ -1841,14 +1874,16 @@ class Zeroconf(QuietLogger):
 
             out.add_answer_at_time(
                 DNSText(info.name, _TYPE_TXT, _CLASS_IN, ttl, info.text), 0)
-            if info.address:
-                out.add_answer_at_time(
-                    DNSAddress(info.server, _TYPE_A, _CLASS_IN,
-                               ttl, info.address), 0)
-            if info.address6:
-                out.add_answer_at_time(
-                    DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN,
-                               ttl, info.address6), 0)
+            if info.addresses:
+                for address in info.addresses:
+                    out.add_answer_at_time(
+                        DNSAddress(info.server, _TYPE_A, _CLASS_IN,
+                                ttl, address), 0)
+            if info.addresses6:
+                for address in info.addresses6:
+                    out.add_answer_at_time(
+                        DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN,
+                                ttl, address), 0)
             self.send(out)
             i += 1
             next_time += _REGISTER_TIME
@@ -1880,15 +1915,17 @@ class Zeroconf(QuietLogger):
             out.add_answer_at_time(
                 DNSText(info.name, _TYPE_TXT, _CLASS_IN, 0, info.text), 0)
 
-            if info.address:
-                out.add_answer_at_time(
-                    DNSAddress(info.server, _TYPE_A, _CLASS_IN, 0,
-                               info.address), 0)
+            if info.addresses:
+                for address in info.addresses:
+                    out.add_answer_at_time(
+                        DNSAddress(info.server, _TYPE_A, _CLASS_IN, 0,
+                                address), 0)
 
-            if info.address6:
-                out.add_answer_at_time(
-                    DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN, 0,
-                               info.address6), 0)
+            if info.addresses6:
+                for address in info.addresses6:
+                    out.add_answer_at_time(
+                        DNSAddress(info.server, _TYPE_AAAA, _CLASS_IN, 0,
+                                info.address6), 0)
             self.send(out)
             i += 1
             next_time += _UNREGISTER_TIME
@@ -1913,14 +1950,16 @@ class Zeroconf(QuietLogger):
                         info.priority, info.weight, info.port, info.server), 0)
                     out.add_answer_at_time(DNSText(
                         info.name, _TYPE_TXT, _CLASS_IN, 0, info.text), 0)
-                    if info.address:
-                        out.add_answer_at_time(DNSAddress(
-                            info.server, _TYPE_A, _CLASS_IN, 0,
-                            info.address), 0)
-                    if info.address6:
-                        out.add_answer_at_time(DNSAddress(
-                            info.server, _TYPE_AAAA, _CLASS_IN, 0,
-                            info.address6), 0)
+                    if info.addresses:
+                        for address in info.addresses:
+                            out.add_answer_at_time(DNSAddress(
+                                info.server, _TYPE_A, _CLASS_IN, 0,
+                                address), 0)
+                    if info.addresses6:
+                        for address in info.addresses6:
+                            out.add_answer_at_time(DNSAddress(
+                                info.server, _TYPE_AAAA, _CLASS_IN, 0,
+                                address), 0)
                 self.send(out)
                 i += 1
                 next_time += _UNREGISTER_TIME
@@ -2050,10 +2089,16 @@ class Zeroconf(QuietLogger):
                     if question.type in (_TYPE_A, _TYPE_ANY):
                         for service in self.services.values():
                             if service.server == question.name.lower():
-                                out.add_answer(msg, DNSAddress(
-                                    question.name, _TYPE_A,
-                                    _CLASS_IN | _CLASS_UNIQUE,
-                                    _DNS_TTL, service.address))
+                                for address in service.addresses:
+                                    out.add_answer(msg, DNSAddress(
+                                        question.name, _TYPE_A,
+                                        _CLASS_IN | _CLASS_UNIQUE,
+                                        _DNS_TTL, address))
+                                for address in service.addresses6:
+                                    out.add_answer(msg, DNSAddress(
+                                        question.name, _TYPE_AAAA,
+                                        _CLASS_IN | _CLASS_UNIQUE,
+                                        _DNS_TTL, address))
 
                     service = self.services.get(question.name.lower(), None)
                     if not service:
@@ -2069,9 +2114,14 @@ class Zeroconf(QuietLogger):
                             question.name, _TYPE_TXT, _CLASS_IN | _CLASS_UNIQUE,
                             _DNS_TTL, service.text))
                     if question.type == _TYPE_SRV:
-                        out.add_additional_answer(DNSAddress(
-                            service.server, _TYPE_A, _CLASS_IN | _CLASS_UNIQUE,
-                            _DNS_TTL, service.address))
+                        for address in service.addresses:
+                            out.add_additional_answer(DNSAddress(
+                                service.server, _TYPE_A, _CLASS_IN | _CLASS_UNIQUE,
+                                _DNS_TTL, address))
+                        for address in service.addresses6:
+                            out.add_additional_answer(DNSAddress(
+                                service.server, _TYPE_AAAA, _CLASS_IN | _CLASS_UNIQUE,
+                                _DNS_TTL, address))
                 except Exception:  # TODO stop catching all Exceptions
                     self.log_exception_warning()
 
