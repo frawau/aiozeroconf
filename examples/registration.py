@@ -38,8 +38,8 @@ async def run_test(zc):
 
     info = ServiceInfo("_http._tcp.local.",
                        "Paul's Test Web Site._http._tcp.local.",
-                       socket.inet_aton("127.0.0.1"), 80, 0, 0,
-                       desc, "ash-2.local.")
+                       address=socket.inet_aton("127.0.0.1"), port=80,
+                       weight=0, priority=0, properties=desc, server="ash-2.local.")
     print("Registration of a service, press Ctrl-C to exit...")
     await zc.register_service(info)
 
@@ -54,15 +54,11 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     if len(sys.argv) > 1:
         assert sys.argv[1:] == ['--debug']
-        logging.getLogger('zeroconf').setLevel(logging.DEBUG)
+        logging.getLogger('aiozeroconf').setLevel(logging.DEBUG)
 
     loop = asyncio.get_event_loop()
 
-desc = {'path': '/~paulsm/'}
-info = ServiceInfo("_http._tcp.local.",
-                   "Paul's Test Web Site._http._tcp.local.",
-                   socket.inet_aton("127.0.0.1"), 80, 0, 0,
-                   desc, "ash-2.local.")
+
 zc = Zeroconf(loop)
 xx = loop.create_task(run_test(zc))
 try:
